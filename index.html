@@ -259,11 +259,31 @@ function preprocess() {
   for (const r of state.rows) {
     r._date = parseExcelDate(r['Invoice Date']);
     if (r._date) r._dateStr = formatDate(r._date);
-    if (!r['Dis TAT'] || !String(r['Dis TAT']).trim()) {
+
+    // Effective pickup date: fall back to Invoice Date when Pickedup_Date is empty
+    const pickup = parseExcelDate(r['Pickedup_Date']) || r._date;
+    r._pickup = pickup;
+
+    // Recalculate Dis Days = (effective pickup - Sales Order Date) in days
+    const salesOrder = parseExcelDate(r['Sales Order Date']);
+    if (pickup && salesOrder) {
+      const days = Math.max(0, Math.round((pickup - salesOrder) / 86400000));
+      r['Dis Days'] = days;
+      r['Dis TAT'] = days <= 2 ? '0-2 Days' : days <= 5 ? '3-5 Days' : '>5 Days';
+    } else if (!r['Dis TAT'] || !String(r['Dis TAT']).trim()) {
       const d = Number(r['Dis Days']);
       if (Number.isFinite(d)) r['Dis TAT'] = d <= 2 ? '0-2 Days' : d <= 5 ? '3-5 Days' : '>5 Days';
     }
-    if (!r['Delivery TAT'] || !String(r['Delivery TAT']).trim()) {
+
+    // Recalculate Delivery Days = (Delivered Date - effective pickup) in days
+    const delivered = parseExcelDate(r['Delivered Date']);
+    if (delivered && pickup) {
+      const days = Math.max(0, Math.round((delivered - pickup) / 86400000));
+      r['Delivery Days'] = days;
+      r['Delivery TAT'] = days <= 9 ? '0-9 Days' : days <= 12 ? '10-12 Days' : '>12 Days';
+    } else if (!delivered) {
+      r['Delivery TAT'] = 'Delivery Pending';
+    } else if (!r['Delivery TAT'] || !String(r['Delivery TAT']).trim()) {
       const d = Number(r['Delivery Days']);
       if (Number.isFinite(d)) r['Delivery TAT'] = d <= 9 ? '0-9 Days' : d <= 12 ? '10-12 Days' : '>12 Days';
       else r['Delivery TAT'] = 'Delivery Pending';
