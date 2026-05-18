@@ -692,6 +692,20 @@ function loadExcelJS() {
   });
 }
 
+// RawData sheet column mapping (used by formula references in pivot sheets)
+const RAW_COL = {
+  '_dateStr':           'A',
+  'From Warehouse':     'B',
+  'New MIS Item Group': 'C',
+  'Sales_Channel':      'D',
+  'Customer':           'E',
+  'Dis TAT':            'F',
+  'Delivery TAT':       'G',
+  'Stock Qty In Kg':    'H',
+};
+const colLetter = (i) => String.fromCharCode(64 + i);
+const escFormulaStr = (s) => String(s).replace(/"/g, '""');
+
 async function exportExcel() {
   const btn = $('#btn-export');
   btn.disabled = true; btn.innerHTML = '<span class="spinner-sm"></span> Building Excel...';
@@ -699,20 +713,28 @@ async function exportExcel() {
     await loadExcelJS();
     const fdf = getFiltered();
     const wb = new ExcelJS.Workbook();
+
+    // 1. RawData sheet - pivot sheets reference this via SUMIFS
+    writeRawDataSheet(wb, fdf);
+
+    // 2. Dispatch TAT pivot sheets (SUMIFS weighted by Stock Qty In Kg)
     const subs = [['Invoice Date','_dateStr'],['MIS Item Group','New MIS Item Group'],['Sales Channel','Sales_Channel'],['From Warehouse','From Warehouse']];
     for (const [name, col] of subs) {
       const p = buildPctPivot(fdf, col, 'Dis TAT', DISPATCH_CATS);
-      writePctSheet(wb, `Dis-${name}`.slice(0,31), p);
+      writePctSheet(wb, `Dis-${name}`.slice(0,31), p, col, 'Dis TAT');
     }
+    // 3. Delivery TAT pivot sheets
     for (const [name, col] of subs) {
       const p = buildPctPivot(fdf, col, 'Delivery TAT', DELIVERY_CATS);
-      writePctSheet(wb, `Del-${name}`.slice(0,31), p);
+      writePctSheet(wb, `Del-${name}`.slice(0,31), p, col, 'Delivery TAT');
     }
+    // 4. MTD pivot sheets (SUMIFS for sums)
     if (hasStockQty()) {
-      writeSumSingleSheet(wb, 'MTD-Warehouse', buildSumSingle(fdf, 'From Warehouse', 'Stock Qty In Kg'));
-      writeSumCrossSheet(wb, 'MTD-SalesChannel', buildSumCross(fdf, 'Sales_Channel', 'From Warehouse', 'Stock Qty In Kg'), 'Sales Channel');
-      writeSumCrossSheet(wb, 'MTD-InvoiceDate', buildSumCross(fdf, '_dateStr', 'From Warehouse', 'Stock Qty In Kg'), 'Invoice Date');
+      writeSumSingleSheet(wb, 'MTD-Warehouse', buildSumSingle(fdf, 'From Warehouse', 'Stock Qty In Kg'), 'From Warehouse');
+      writeSumCrossSheet(wb, 'MTD-SalesChannel', buildSumCross(fdf, 'Sales_Channel', 'From Warehouse', 'Stock Qty In Kg'), 'Sales Channel', 'Sales_Channel');
+      writeSumCrossSheet(wb, 'MTD-InvoiceDate', buildSumCross(fdf, '_dateStr', 'From Warehouse', 'Stock Qty In Kg'), 'Invoice Date', '_dateStr');
     }
+
     const buf = await wb.xlsx.writeBuffer();
     const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = URL.createObjectURL(blob);
@@ -726,6 +748,30 @@ async function exportExcel() {
   }
 }
 
+function writeRawDataSheet(wb, data) {
+  const ws = wb.addWorksheet('RawData');
+  ws.addRow(['Invoice Date', 'From Warehouse', 'New MIS Item Group', 'Sales_Channel', 'Customer', 'Dis TAT', 'Delivery TAT', 'Stock Qty In Kg']).eachCell(styleHeader);
+  for (const r of data) {
+    const row = ws.addRow([
+      r._dateStr || '',
+      String(r['From Warehouse'] || ''),
+      String(r['New MIS Item Group'] || ''),
+      String(r['Sales_Channel'] || ''),
+      String(r['Customer'] || ''),
+      String(r['Dis TAT'] || ''),
+      String(r['Delivery TAT'] || ''),
+      Number(r['Stock Qty In Kg']) || 0,
+    ]);
+    for (let j = 1; j <= 8; j++) {
+      const c = row.getCell(j);
+      c.border = _border;
+      c.alignment = { horizontal: j === 8 ? 'right' : 'left' };
+    }
+    row.getCell(8).numFmt = '#,##,##0';
+  }
+  autoFit(ws);
+}
+
 const _hdrFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0A2647' } };
 const _rowHdrFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A5276' } };
 const _gtFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCFE2FF' } };
@@ -736,41 +782,120 @@ function styleRowHeader(cell) { cell.font = { bold: true, color: { argb: 'FFFFFF
 function styleData(cell) { cell.alignment = { horizontal: 'center' }; cell.border = _border; }
 function styleGT(cell) { cell.font = { bold: true, size: 11 }; cell.fill = _gtFill; cell.alignment = { horizontal: 'center' }; cell.border = _border; }
 
-function writePctSheet(wb, name, pivot) {
+// TAT % pivot: SUMIFS(Stock Qty, group, tat) / SUMIFS(Stock Qty, group, tat<>blank)
+function writePctSheet(wb, name, pivot, groupCol, tatCol) {
   const ws = wb.addWorksheet(name);
+  const gC = RAW_COL[groupCol];
+  const tC = RAW_COL[tatCol];
+  const vC = RAW_COL['Stock Qty In Kg'];
   ws.addRow(['', ...pivot.categories]).eachCell(styleHeader);
   for (const r of pivot.rows) {
-    const row = ws.addRow([r.key, ...pivot.categories.map(c => `${r.pct[c]}%`)]);
+    const row = ws.addRow([r.key]);
     styleRowHeader(row.getCell(1));
-    for (let i = 2; i <= pivot.categories.length + 1; i++) styleData(row.getCell(i));
+    const keyEsc = escFormulaStr(r.key);
+    for (let i = 0; i < pivot.categories.length; i++) {
+      const cat = pivot.categories[i];
+      const catEsc = escFormulaStr(cat);
+      const cell = row.getCell(i + 2);
+      cell.value = {
+        formula: `IFERROR(SUMIFS(RawData!${vC}:${vC},RawData!${gC}:${gC},"${keyEsc}",RawData!${tC}:${tC},"${catEsc}")/SUMIFS(RawData!${vC}:${vC},RawData!${gC}:${gC},"${keyEsc}",RawData!${tC}:${tC},"<>"),0)`,
+        result: r.pct[cat] / 100,
+      };
+      cell.numFmt = '0.0%';
+      styleData(cell);
+    }
   }
-  ws.addRow(['Grand Total', ...pivot.categories.map(c => `${pivot.grandTotal.pct[c]}%`)]).eachCell(styleGT);
+  // Grand Total row: overall TAT distribution across all groups
+  const gtRow = ws.addRow(['Grand Total']);
+  for (let i = 0; i < pivot.categories.length; i++) {
+    const cat = pivot.categories[i];
+    const catEsc = escFormulaStr(cat);
+    const cell = gtRow.getCell(i + 2);
+    cell.value = {
+      formula: `IFERROR(SUMIFS(RawData!${vC}:${vC},RawData!${tC}:${tC},"${catEsc}")/SUMIFS(RawData!${vC}:${vC},RawData!${tC}:${tC},"<>"),0)`,
+      result: pivot.grandTotal.pct[cat] / 100,
+    };
+    cell.numFmt = '0.0%';
+  }
+  gtRow.eachCell(styleGT);
   autoFit(ws);
 }
 
-function writeSumSingleSheet(wb, name, pivot) {
+// MTD single-column sum: SUMIFS(Stock Qty, group=val)
+function writeSumSingleSheet(wb, name, pivot, groupCol) {
   const ws = wb.addWorksheet(name);
-  ws.addRow(['From Warehouse', 'Stock Qty In Kg']).eachCell(styleHeader);
+  const gC = RAW_COL[groupCol];
+  const vC = RAW_COL['Stock Qty In Kg'];
+  ws.addRow([groupCol, 'Stock Qty In Kg']).eachCell(styleHeader);
+  const firstDataRow = 2;
   for (const r of pivot.rows) {
-    const row = ws.addRow([r.key, r.value]);
-    styleRowHeader(row.getCell(1)); styleData(row.getCell(2)); row.getCell(2).numFmt = '#,##,##0';
-  }
-  const gt = ws.addRow(['Grand Total', pivot.total]);
-  gt.eachCell(styleGT); gt.getCell(2).numFmt = '#,##,##0';
-  autoFit(ws);
-}
-
-function writeSumCrossSheet(wb, name, pivot, rowLabel) {
-  const ws = wb.addWorksheet(name);
-  ws.addRow([rowLabel, ...pivot.cols]).eachCell(styleHeader);
-  for (const r of pivot.rows) {
-    const row = ws.addRow([r.key, ...pivot.cols.map(c => r.values[c])]);
+    const row = ws.addRow([r.key]);
     styleRowHeader(row.getCell(1));
-    for (let i = 2; i <= pivot.cols.length + 1; i++) { styleData(row.getCell(i)); row.getCell(i).numFmt = '#,##,##0'; }
+    const keyEsc = escFormulaStr(r.key);
+    const cell = row.getCell(2);
+    cell.value = {
+      formula: `SUMIFS(RawData!${vC}:${vC},RawData!${gC}:${gC},"${keyEsc}")`,
+      result: r.value,
+    };
+    cell.numFmt = '#,##,##0';
+    styleData(cell);
   }
-  const gt = ws.addRow(['Grand Total', ...pivot.cols.map(c => pivot.grandTotal.values[c])]);
+  const lastDataRow = ws.rowCount;
+  const gt = ws.addRow(['Grand Total']);
+  const gtCell = gt.getCell(2);
+  gtCell.value = { formula: `SUM(B${firstDataRow}:B${lastDataRow})`, result: pivot.total };
+  gtCell.numFmt = '#,##,##0';
   gt.eachCell(styleGT);
-  for (let i = 2; i <= pivot.cols.length + 1; i++) gt.getCell(i).numFmt = '#,##,##0';
+  autoFit(ws);
+}
+
+// MTD cross-tab sum: SUMIFS(Stock Qty, row=val, col=val)
+function writeSumCrossSheet(wb, name, pivot, rowLabel, rowCol) {
+  const ws = wb.addWorksheet(name);
+  const rC = RAW_COL[rowCol];
+  const cC = RAW_COL['From Warehouse'];
+  const vC = RAW_COL['Stock Qty In Kg'];
+  ws.addRow([rowLabel, ...pivot.cols]).eachCell(styleHeader);
+  const firstDataRow = 2;
+  for (const r of pivot.rows) {
+    const row = ws.addRow([r.key]);
+    styleRowHeader(row.getCell(1));
+    const keyEsc = escFormulaStr(r.key);
+    for (let i = 0; i < pivot.cols.length; i++) {
+      const colName = pivot.cols[i];
+      const cell = row.getCell(i + 2);
+      if (colName === 'Grand Total') {
+        // Sum this row across the data columns (B .. col before GT)
+        const startLetter = colLetter(2);
+        const endLetter = colLetter(1 + i);
+        cell.value = {
+          formula: `SUM(${startLetter}${ws.rowCount}:${endLetter}${ws.rowCount})`,
+          result: r.values[colName],
+        };
+      } else {
+        const colEsc = escFormulaStr(colName);
+        cell.value = {
+          formula: `SUMIFS(RawData!${vC}:${vC},RawData!${rC}:${rC},"${keyEsc}",RawData!${cC}:${cC},"${colEsc}")`,
+          result: r.values[colName],
+        };
+      }
+      cell.numFmt = '#,##,##0';
+      styleData(cell);
+    }
+  }
+  const lastDataRow = ws.rowCount;
+  // Grand Total row: SUM each column from data rows
+  const gtRow = ws.addRow(['Grand Total']);
+  for (let i = 0; i < pivot.cols.length; i++) {
+    const cell = gtRow.getCell(i + 2);
+    const letter = colLetter(2 + i);
+    cell.value = {
+      formula: `SUM(${letter}${firstDataRow}:${letter}${lastDataRow})`,
+      result: pivot.grandTotal.values[pivot.cols[i]],
+    };
+    cell.numFmt = '#,##,##0';
+  }
+  gtRow.eachCell(styleGT);
   autoFit(ws);
 }
 
