@@ -714,21 +714,23 @@ async function exportExcel() {
     const fdf = getFiltered();
     const wb = new ExcelJS.Workbook();
 
-    // 1. RawData sheet - pivot sheets reference this via SUMIFS
+    // 1. RawData sheet - pivot sheets reference this via SUMPRODUCT / SUMIFS
     writeRawDataSheet(wb, fdf);
+    // Header is row 1; data is rows 2..lastDataRow
+    const lastDataRow = fdf.length + 1;
 
-    // 2. Dispatch TAT pivot sheets (SUMIFS weighted by Stock Qty In Kg)
+    // 2. Dispatch TAT pivot sheets (SUMPRODUCT weighted by Stock Qty In Kg)
     const subs = [['Invoice Date','_dateStr'],['MIS Item Group','New MIS Item Group'],['Sales Channel','Sales_Channel'],['From Warehouse','From Warehouse']];
     for (const [name, col] of subs) {
       const p = buildPctPivot(fdf, col, 'Dis TAT', DISPATCH_CATS);
-      writePctSheet(wb, `Dis-${name}`.slice(0,31), p, col, 'Dis TAT');
+      writePctSheet(wb, `Dis-${name}`.slice(0,31), p, col, 'Dis TAT', lastDataRow);
     }
     // 3. Delivery TAT pivot sheets
     for (const [name, col] of subs) {
       const p = buildPctPivot(fdf, col, 'Delivery TAT', DELIVERY_CATS);
-      writePctSheet(wb, `Del-${name}`.slice(0,31), p, col, 'Delivery TAT');
+      writePctSheet(wb, `Del-${name}`.slice(0,31), p, col, 'Delivery TAT', lastDataRow);
     }
-    // 4. MTD pivot sheets (SUMIFS for sums)
+    // 4. MTD pivot sheets (SUMIFS for sums - criteria values don't start with operators)
     if (hasStockQty()) {
       writeSumSingleSheet(wb, 'MTD-Warehouse', buildSumSingle(fdf, 'From Warehouse', 'Stock Qty In Kg'), 'From Warehouse');
       writeSumCrossSheet(wb, 'MTD-SalesChannel', buildSumCross(fdf, 'Sales_Channel', 'From Warehouse', 'Stock Qty In Kg'), 'Sales Channel', 'Sales_Channel');
@@ -782,12 +784,25 @@ function styleRowHeader(cell) { cell.font = { bold: true, color: { argb: 'FFFFFF
 function styleData(cell) { cell.alignment = { horizontal: 'center' }; cell.border = _border; }
 function styleGT(cell) { cell.font = { bold: true, size: 11 }; cell.fill = _gtFill; cell.alignment = { horizontal: 'center' }; cell.border = _border; }
 
-// TAT % pivot: SUMIFS(Stock Qty, group, tat) / SUMIFS(Stock Qty, group, tat<>blank)
-function writePctSheet(wb, name, pivot, groupCol, tatCol) {
+// TAT % pivot. Uses SUMPRODUCT instead of SUMIFS because TAT bucket names
+// start with ">" (e.g. ">5 Days", "> 12 Days") which SUMIFS interprets as
+// a "greater than" comparison operator rather than literal text.
+// SUMPRODUCT with explicit "=" array comparison always evaluates as equality.
+//
+// Formula:
+//   IFERROR(
+//     SUMPRODUCT((group_range=key)*(tat_range=cat)*qty_range)
+//     / SUMPRODUCT((group_range=key)*(tat_range<>"")*qty_range)
+//   , 0)
+function writePctSheet(wb, name, pivot, groupCol, tatCol, lastDataRow) {
   const ws = wb.addWorksheet(name);
   const gC = RAW_COL[groupCol];
   const tC = RAW_COL[tatCol];
   const vC = RAW_COL['Stock Qty In Kg'];
+  const gRange = `RawData!${gC}$2:${gC}$${lastDataRow}`;
+  const tRange = `RawData!${tC}$2:${tC}$${lastDataRow}`;
+  const vRange = `RawData!${vC}$2:${vC}$${lastDataRow}`;
+
   ws.addRow(['', ...pivot.categories]).eachCell(styleHeader);
   for (const r of pivot.rows) {
     const row = ws.addRow([r.key]);
@@ -798,7 +813,7 @@ function writePctSheet(wb, name, pivot, groupCol, tatCol) {
       const catEsc = escFormulaStr(cat);
       const cell = row.getCell(i + 2);
       cell.value = {
-        formula: `IFERROR(SUMIFS(RawData!${vC}:${vC},RawData!${gC}:${gC},"${keyEsc}",RawData!${tC}:${tC},"${catEsc}")/SUMIFS(RawData!${vC}:${vC},RawData!${gC}:${gC},"${keyEsc}",RawData!${tC}:${tC},"<>"),0)`,
+        formula: `IFERROR(SUMPRODUCT((${gRange}="${keyEsc}")*(${tRange}="${catEsc}")*${vRange})/SUMPRODUCT((${gRange}="${keyEsc}")*(${tRange}<>"")*${vRange}),0)`,
         result: r.pct[cat] / 100,
       };
       cell.numFmt = '0.0%';
@@ -812,7 +827,7 @@ function writePctSheet(wb, name, pivot, groupCol, tatCol) {
     const catEsc = escFormulaStr(cat);
     const cell = gtRow.getCell(i + 2);
     cell.value = {
-      formula: `IFERROR(SUMIFS(RawData!${vC}:${vC},RawData!${tC}:${tC},"${catEsc}")/SUMIFS(RawData!${vC}:${vC},RawData!${tC}:${tC},"<>"),0)`,
+      formula: `IFERROR(SUMPRODUCT((${tRange}="${catEsc}")*${vRange})/SUMPRODUCT((${tRange}<>"")*${vRange}),0)`,
       result: pivot.grandTotal.pct[cat] / 100,
     };
     cell.numFmt = '0.0%';
