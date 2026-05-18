@@ -170,9 +170,9 @@ table.pivot tbody td.pct-hi { background-color: #f5b7b1; }
 'use strict';
 
 const DISPATCH_CATS = ['0-2 Days','3-5 Days','>5 Days'];
-const DELIVERY_CATS = ['0-9 Days','10-12 Days','>12 Days','Delivery Pending'];
+const DELIVERY_CATS = ['0-9 Days','10-12 Days','> 12 Days','Delivery Pending'];
 const DISPATCH_COLORS = {'0-2 Days':'#27ae60','3-5 Days':'#f39c12','>5 Days':'#e74c3c'};
-const DELIVERY_COLORS = {'0-9 Days':'#27ae60','10-12 Days':'#f39c12','>12 Days':'#e74c3c','Delivery Pending':'#7f8c8d'};
+const DELIVERY_COLORS = {'0-9 Days':'#27ae60','10-12 Days':'#f39c12','> 12 Days':'#e74c3c','Delivery Pending':'#7f8c8d'};
 const REQUIRED = ['Invoice Date','New MIS Item Group','Sales_Channel','From Warehouse','Customer'];
 
 const state = {
@@ -264,10 +264,11 @@ function preprocess() {
     const pickup = parseExcelDate(r['Pickedup_Date']) || r._date;
     r._pickup = pickup;
 
-    // Recalculate Dis Days = (effective pickup - Sales Order Date) in days
-    const salesOrder = parseExcelDate(r['Sales Order Date']);
-    if (pickup && salesOrder) {
-      const days = Math.max(0, Math.round((pickup - salesOrder) / 86400000));
+    // Dis Days = Pickedup_Date - Sales Confirmation Date (matches NDD formula in source)
+    // Falls back to Sales Order Date if Sales Confirmation Date is missing
+    const salesConf = parseExcelDate(r['Sales Confirmation Date']) || parseExcelDate(r['Sales Order Date']);
+    if (pickup && salesConf) {
+      const days = Math.max(0, Math.round((pickup - salesConf) / 86400000));
       r['Dis Days'] = days;
       r['Dis TAT'] = days <= 2 ? '0-2 Days' : days <= 5 ? '3-5 Days' : '>5 Days';
     } else if (!r['Dis TAT'] || !String(r['Dis TAT']).trim()) {
@@ -275,17 +276,17 @@ function preprocess() {
       if (Number.isFinite(d)) r['Dis TAT'] = d <= 2 ? '0-2 Days' : d <= 5 ? '3-5 Days' : '>5 Days';
     }
 
-    // Recalculate Delivery Days = (Delivered Date - effective pickup) in days
+    // Delivery Days = Delivered Date - effective pickup; bucket "> 12 Days" matches source format
     const delivered = parseExcelDate(r['Delivered Date']);
     if (delivered && pickup) {
       const days = Math.max(0, Math.round((delivered - pickup) / 86400000));
       r['Delivery Days'] = days;
-      r['Delivery TAT'] = days <= 9 ? '0-9 Days' : days <= 12 ? '10-12 Days' : '>12 Days';
+      r['Delivery TAT'] = days <= 9 ? '0-9 Days' : days <= 12 ? '10-12 Days' : '> 12 Days';
     } else if (!delivered) {
       r['Delivery TAT'] = 'Delivery Pending';
     } else if (!r['Delivery TAT'] || !String(r['Delivery TAT']).trim()) {
       const d = Number(r['Delivery Days']);
-      if (Number.isFinite(d)) r['Delivery TAT'] = d <= 9 ? '0-9 Days' : d <= 12 ? '10-12 Days' : '>12 Days';
+      if (Number.isFinite(d)) r['Delivery TAT'] = d <= 9 ? '0-9 Days' : d <= 12 ? '10-12 Days' : '> 12 Days';
       else r['Delivery TAT'] = 'Delivery Pending';
     }
   }
@@ -348,19 +349,23 @@ function getFiltered() {
   });
 }
 
+// Percentage pivot weighted by Stock Qty In Kg (matches source Excel pivot logic).
+// If Stock Qty In Kg column is missing, falls back to row count.
 function buildPctPivot(data, groupKey, tatKey, categories) {
+  const useWeight = hasStockQty();
   const valid = data.filter(r => r[tatKey] && String(r[tatKey]).trim());
-  const counts = {};
+  const sums = {};
   for (const r of valid) {
     const g = String(r[groupKey] ?? '(blank)');
     const t = String(r[tatKey]);
-    if (!counts[g]) counts[g] = {};
-    counts[g][t] = (counts[g][t] || 0) + 1;
+    const w = useWeight ? (Number(r['Stock Qty In Kg']) || 0) : 1;
+    if (!sums[g]) sums[g] = {};
+    sums[g][t] = (sums[g][t] || 0) + w;
   }
-  const keys = Object.keys(counts).sort();
+  const keys = Object.keys(sums).sort();
   const rows = keys.map(key => {
     const c = {}; let total = 0;
-    for (const cat of categories) { c[cat] = counts[key][cat] || 0; total += c[cat]; }
+    for (const cat of categories) { c[cat] = sums[key][cat] || 0; total += c[cat]; }
     const pct = {};
     for (const cat of categories) pct[cat] = total > 0 ? Math.round(c[cat]/total*100) : 0;
     return { key, counts: c, pct };
@@ -553,13 +558,25 @@ function renderTabContent() {
 }
 
 function renderTat(fdf, tatKey, label, cats, colors, pfx) {
+  const useWeight = hasStockQty();
   const valid = fdf.filter(r => r[tatKey] && String(r[tatKey]).trim());
-  const tc = {}; for (const r of valid) tc[r[tatKey]] = (tc[r[tatKey]]||0) + 1;
+  // tc tracks the weight (stock qty in kg) or row count per TAT bucket
+  const tc = {}; let validTotal = 0;
+  for (const r of valid) {
+    const w = useWeight ? (Number(r['Stock Qty In Kg']) || 0) : 1;
+    tc[r[tatKey]] = (tc[r[tatKey]] || 0) + w;
+    validTotal += w;
+  }
+  const totalQty = useWeight
+    ? fdf.reduce((s, r) => s + (Number(r['Stock Qty In Kg']) || 0), 0)
+    : fdf.length;
+  const totalLabel = useWeight ? 'Total Stock Qty (Kg)' : 'Total Lines';
+  const fmt = useWeight ? formatIndian : (n => n.toLocaleString());
   let kpiHtml = `<div class="kpi-row">
-    <div class="kpi-card"><div class="label">Total Lines</div><div class="value">${fdf.length.toLocaleString()}</div></div>
+    <div class="kpi-card"><div class="label">${totalLabel}</div><div class="value">${fmt(totalQty)}</div></div>
     ${cats.map(c => {
-      const cnt = tc[c]||0, pct = valid.length>0 ? Math.round(cnt/valid.length*100) : 0;
-      return `<div class="kpi-card" style="border-left-color:${colors[c]}"><div class="label">${esc(c)}</div><div class="value">${cnt.toLocaleString()} (${pct}%)</div></div>`;
+      const v = tc[c]||0, pct = validTotal > 0 ? Math.round(v/validTotal*100) : 0;
+      return `<div class="kpi-card" style="border-left-color:${colors[c]}"><div class="label">${esc(c)}</div><div class="value">${fmt(v)} (${pct}%)</div></div>`;
     }).join('')}</div>`;
 
   const subs = [['date','Invoice Date'],['item','MIS Item Group'],['channel','Sales Channel'],['warehouse','From Warehouse']];
