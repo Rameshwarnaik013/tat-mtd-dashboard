@@ -90,11 +90,55 @@ input,select { font-family: inherit; }
 .kpi-card .value { font-size: 1.25rem; font-weight: 700; color: #0a2647; margin-top: 4px; }
 
 .section h3 { font-size: 1.05rem; color: #0a2647; font-weight: 700; margin-bottom: 12px; }
-.table-wrap { overflow-x: auto; background: white; border-radius: 8px; border: 1px solid #e8eef5; margin-bottom: 16px; max-height: 600px; }
-table.pivot { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
-table.pivot thead th { background: #0a2647; color: white; font-weight: 900; font-size: 0.85rem; text-align: center; padding: 12px 14px; border: 2px solid #052238; text-transform: uppercase; letter-spacing: 0.3px; white-space: nowrap; position: sticky; top: 0; z-index: 2; }
-table.pivot tbody th { background: #1a5276; color: white; font-weight: 700; text-align: left; padding: 9px 12px; border: 1px solid #0a2647; white-space: nowrap; position: sticky; left: 0; z-index: 1; }
-table.pivot tbody td { padding: 8px 14px; border: 1px solid #d0d7de; text-align: center; }
+.table-wrap {
+  overflow: visible;
+  background: transparent;
+  margin-bottom: 16px;
+  display: flex; justify-content: center;
+}
+table.pivot {
+  width: auto;
+  max-width: 100%;
+  border-collapse: collapse;
+  font-size: 1rem;
+  font-feature-settings: "tnum" 1;
+  background: white;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+table.pivot thead th {
+  background: #0a2647; color: white;
+  font-weight: 800;
+  font-size: 1rem;
+  text-align: center;
+  padding: 14px 22px;
+  border: 1px solid #052238;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+  -webkit-font-smoothing: antialiased;
+}
+table.pivot tbody th {
+  background: #1a5276; color: white;
+  font-weight: 700;
+  font-size: 1rem;
+  text-align: left;
+  padding: 11px 18px;
+  border: 1px solid #0a2647;
+  white-space: nowrap;
+  -webkit-font-smoothing: antialiased;
+}
+table.pivot tbody td {
+  padding: 11px 22px;
+  border: 1px solid #d0d7de;
+  text-align: center;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #0a2647;
+  white-space: nowrap;
+  -webkit-font-smoothing: antialiased;
+}
 table.pivot tbody tr.grand-total th, table.pivot tbody tr.grand-total td { background: #cfe2ff !important; color: #0a2647 !important; font-weight: 700; }
 table.pivot tbody td.gt-col { background: #e7f0ff; font-weight: 600; }
 table.pivot tbody td.pct-low { background-color: #d5f5e3; }
@@ -164,36 +208,33 @@ table.pivot tbody td.pct-hi { background-color: #f5b7b1; }
 /* Crisp screenshot-friendly table inside modal */
 .expand-modal table.pivot {
   font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
-  font-size: 0.96rem;
+  font-size: 1.05rem;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  font-feature-settings: "kern" 1, "liga" 1;
-  border-collapse: separate;
-  border-spacing: 0;
+  font-feature-settings: "kern" 1, "liga" 1, "tnum" 1;
+  border-collapse: collapse;
 }
 .expand-modal table.pivot thead th {
-  padding: 14px 18px;
-  font-size: 0.92rem;
+  padding: 16px 24px;
+  font-size: 1rem;
   font-weight: 800;
-  letter-spacing: 0.4px;
-  position: static;
+  letter-spacing: 0.5px;
 }
 .expand-modal table.pivot tbody th {
-  padding: 12px 16px;
-  font-size: 0.92rem;
+  padding: 13px 20px;
+  font-size: 1rem;
   font-weight: 700;
-  position: static;
 }
 .expand-modal table.pivot tbody td {
-  padding: 12px 18px;
-  font-size: 0.95rem;
+  padding: 13px 24px;
+  font-size: 1.02rem;
   font-weight: 600;
   color: #0a2647;
 }
 .expand-modal table.pivot tbody tr.grand-total th,
 .expand-modal table.pivot tbody tr.grand-total td {
-  font-size: 0.96rem; font-weight: 800;
+  font-size: 1.05rem; font-weight: 800;
 }
 .expand-modal .table-holder { overflow: visible; }
 
