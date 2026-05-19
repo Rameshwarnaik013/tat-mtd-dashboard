@@ -429,10 +429,13 @@ function preprocess() {
       if (Number.isFinite(d)) r['Dis TAT'] = d <= 2 ? '0-2 Days' : d <= 5 ? '3-5 Days' : '>5 Days';
     }
 
-    // Delivery Days = Delivered Date - effective pickup; bucket "> 12 Days" matches source format
+    // Delivery TAT = Delivered Date - Sales Confirmation Date
+    //                (falls back to Sales Order Date if Sales Confirmation Date is blank)
+    // If Delivered Date is missing -> "Delivery Pending"
     const delivered = parseExcelDate(r['Delivered Date']);
-    if (delivered && pickup) {
-      const days = Math.max(0, Math.round((delivered - pickup) / 86400000));
+    const delStart = parseExcelDate(r['Sales Confirmation Date']) || parseExcelDate(r['Sales Order Date']);
+    if (delivered && delStart) {
+      const days = Math.max(0, Math.round((delivered - delStart) / 86400000));
       r['Delivery Days'] = days;
       r['Delivery TAT'] = days <= 9 ? '0-9 Days' : days <= 12 ? '10-12 Days' : '> 12 Days';
     } else if (!delivered) {
