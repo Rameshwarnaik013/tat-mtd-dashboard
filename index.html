@@ -103,6 +103,88 @@ table.pivot tbody td.pct-hi { background-color: #f5b7b1; }
 
 .chart-wrap { background: white; border-radius: 8px; border: 1px solid #e8eef5; padding: 16px; margin-bottom: 16px; height: 360px; position: relative; }
 
+.section-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; }
+.section-header h3, .section-header h4 { margin: 0; }
+.expand-btn {
+  background: white; color: #0a2647; border: 1px solid #d0d7de;
+  padding: 5px 12px; border-radius: 6px;
+  font-size: 0.78rem; font-weight: 600;
+  cursor: pointer; transition: all 0.15s;
+  white-space: nowrap;
+}
+.expand-btn:hover { background: #0a2647; color: white; border-color: #0a2647; }
+
+.expand-modal {
+  position: fixed; inset: 0;
+  background: rgba(15, 23, 42, 0.85);
+  z-index: 10000;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 30px; overflow: auto;
+  animation: emFadeIn 0.15s ease;
+}
+@keyframes emFadeIn { from { opacity: 0; } to { opacity: 1; } }
+.expand-modal .frame {
+  background: white;
+  padding: 36px 44px 32px;
+  border-radius: 14px;
+  box-shadow: 0 24px 80px rgba(0,0,0,0.4);
+  max-width: 96vw;
+  margin: auto;
+}
+.expand-modal .frame-title {
+  font-size: 1.35rem; font-weight: 800;
+  color: #0a2647; margin: 0 0 20px;
+  text-align: center; letter-spacing: 0.2px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+.expand-modal .close-btn {
+  position: fixed; top: 18px; right: 24px;
+  background: white; border: 0;
+  padding: 9px 20px; border-radius: 8px;
+  font-weight: 700; font-size: 0.9rem;
+  color: #0a2647; cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  z-index: 10001;
+}
+.expand-modal .close-btn:hover { background: #f5f7fa; }
+
+/* Crisp screenshot-friendly table inside modal */
+.expand-modal table.pivot {
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+  font-size: 0.96rem;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "kern" 1, "liga" 1;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.expand-modal table.pivot thead th {
+  padding: 14px 18px;
+  font-size: 0.92rem;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  position: static;
+}
+.expand-modal table.pivot tbody th {
+  padding: 12px 16px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  position: static;
+}
+.expand-modal table.pivot tbody td {
+  padding: 12px 18px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #0a2647;
+}
+.expand-modal table.pivot tbody tr.grand-total th,
+.expand-modal table.pivot tbody tr.grand-total td {
+  font-size: 0.96rem; font-weight: 800;
+}
+.expand-modal .table-holder { overflow: visible; }
+
 .drill-down { background: white; border-radius: 8px; border: 1px solid #e8eef5; padding: 16px; margin-bottom: 16px; }
 .drill-down h4 { font-size: 1rem; color: #0a2647; font-weight: 700; margin-bottom: 12px; }
 .drill-down select { padding: 6px 10px; border: 1px solid #d0d7de; border-radius: 4px; font-size: 0.88rem; margin-bottom: 12px; min-width: 260px; }
@@ -168,6 +250,18 @@ table.pivot tbody td.pct-hi { background-color: #f5b7b1; }
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
 <script>
 'use strict';
+
+// Short display labels for long warehouse names (used in MTD tables for screenshot-friendly display)
+const WAREHOUSE_ALIAS = {
+  'RPC Indore - Finished Goods Stores - CBSPL': 'Indore Fg',
+  'RPC Purnia Finished Goods - CBSPL': 'Purnia',
+  'Storage Beyond Sqfeet Gurgaon Finished Goods - CBSPL': 'Cfa GGn',
+  'RPC UD Foods Finished Goods - CBSPL': 'UD',
+  'RPC Kundli - Finished Goods Stores - CBSPL': 'Kundli',
+  'CMC Udupi - Finished Goods Stores - CBSPL': 'Udupi',
+  'RPC Functional & Innovative Foods Finished Goods - CBSPL': 'Rebela',
+};
+const shortenWh = (s) => WAREHOUSE_ALIAS[s] || s;
 
 const DISPATCH_CATS = ['0-2 Days','3-5 Days','>5 Days'];
 const DELIVERY_CATS = ['0-9 Days','10-12 Days','> 12 Days','Delivery Pending'];
@@ -586,7 +680,11 @@ function renderTat(fdf, tatKey, label, cats, colors, pfx) {
   const subLabel = subs.find(s => s[0]===sub)[1];
   const pivot = buildPctPivot(fdf, subCol, tatKey, cats);
 
-  let contentHtml = `<div class="section"><h3>${esc(label)} by ${esc(subLabel)}</h3>${renderPctTable(pivot)}<div class="chart-wrap"><canvas id="chart-${pfx}"></canvas></div></div>`;
+  let contentHtml = `<div class="section">
+    <div class="section-header"><h3>${esc(label)} by ${esc(subLabel)}</h3><button class="expand-btn">⛶ Expand for screenshot</button></div>
+    ${renderPctTable(pivot)}
+    <div class="chart-wrap"><canvas id="chart-${pfx}"></canvas></div>
+  </div>`;
 
   let drillPivot = null, drillCh = null;
   if (sub === 'channel') {
@@ -597,7 +695,8 @@ function renderTat(fdf, tatKey, label, cats, colors, pfx) {
       state.drillCh[pfx] = drillCh;
       const chData = fdf.filter(r => r['Sales_Channel'] === drillCh);
       drillPivot = buildPctPivot(chData, 'Customer', tatKey, cats);
-      contentHtml += `<div class="drill-down"><h4>Customer Breakdown within Sales Channel</h4>
+      contentHtml += `<div class="drill-down">
+        <div class="section-header"><h4>Customer Breakdown within Sales Channel</h4><button class="expand-btn">⛶ Expand for screenshot</button></div>
         <select id="drill-${pfx}">${channels.map(c => `<option value="${esc(c)}" ${c===drillCh?'selected':''}>${esc(c)}</option>`).join('')}</select>
         ${renderPctTable(drillPivot)}
         <div class="chart-wrap"><canvas id="chart-${pfx}-drill"></canvas></div></div>`;
@@ -620,14 +719,15 @@ function renderMtdWh(fdf) {
   let html = `<div class="kpi-row">
     <div class="kpi-card"><div class="label">Total Stock Qty (Kg)</div><div class="value">${formatIndian(pivot.total)}</div></div>
     <div class="kpi-card"><div class="label">Warehouses</div><div class="value">${pivot.rows.length}</div></div></div>
-    <div class="section"><h3>Stock Quantity by Warehouse</h3>
+    <div class="section">
+    <div class="section-header"><h3>Stock Quantity by Warehouse</h3><button class="expand-btn">⛶ Expand for screenshot</button></div>
     <div class="table-wrap"><table class="pivot">
       <thead><tr><th>From Warehouse</th><th>Stock Qty In Kg</th></tr></thead>
-      <tbody>${pivot.rows.map(r => `<tr><th>${esc(r.key)}</th><td>${formatIndian(r.value)}</td></tr>`).join('')}
+      <tbody>${pivot.rows.map(r => `<tr><th>${esc(shortenWh(r.key))}</th><td>${formatIndian(r.value)}</td></tr>`).join('')}
         <tr class="grand-total"><th>Grand Total</th><td>${formatIndian(pivot.total)}</td></tr></tbody></table></div>
     <div class="chart-wrap"><canvas id="chart-mtd-wh"></canvas></div></div>`;
   $('#tab-content').innerHTML = html;
-  renderBarChart('chart-mtd-wh', pivot.rows.map(r => r.key), pivot.rows.map(r => r.value), 'Stock Qty', '#1a5276', 'Stock Quantity by Warehouse');
+  renderBarChart('chart-mtd-wh', pivot.rows.map(r => shortenWh(r.key)), pivot.rows.map(r => r.value), 'Stock Qty', '#1a5276', 'Stock Quantity by Warehouse');
 }
 
 function renderMtdCross(fdf, rowKey, label) {
@@ -637,9 +737,10 @@ function renderMtdCross(fdf, rowKey, label) {
     <div class="kpi-card"><div class="label">Total Stock Qty (Kg)</div><div class="value">${formatIndian(pivot.grandTotal.values['Grand Total'])}</div></div>
     <div class="kpi-card"><div class="label">${esc(label)}s</div><div class="value">${pivot.rows.length}</div></div>
     <div class="kpi-card"><div class="label">Warehouses</div><div class="value">${pivot.cols.length - 1}</div></div></div>
-    <div class="section"><h3>Stock Quantity by ${esc(label)} × Warehouse</h3>
+    <div class="section">
+    <div class="section-header"><h3>Stock Quantity by ${esc(label)} × Warehouse</h3><button class="expand-btn">⛶ Expand for screenshot</button></div>
     <div class="table-wrap"><table class="pivot">
-      <thead><tr><th>${esc(label)}</th>${pivot.cols.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead>
+      <thead><tr><th>${esc(label)}</th>${pivot.cols.map(c => `<th>${esc(c==='Grand Total' ? c : shortenWh(c))}</th>`).join('')}</tr></thead>
       <tbody>${pivot.rows.map(r => `<tr><th>${esc(r.key)}</th>${pivot.cols.map(c => `<td class="${c==='Grand Total'?'gt-col':''}">${formatIndian(r.values[c])}</td>`).join('')}</tr>`).join('')}
         <tr class="grand-total"><th>Grand Total</th>${pivot.cols.map(c => `<td>${formatIndian(pivot.grandTotal.values[c])}</td>`).join('')}</tr></tbody></table></div></div>`;
   $('#tab-content').innerHTML = html;
@@ -921,6 +1022,43 @@ function autoFit(ws) {
     col.width = Math.min(max + 4, 40);
   });
 }
+
+// Expand any table into a clean centered frame for screenshots
+function openExpandModal(tableEl, title) {
+  const modal = document.createElement('div');
+  modal.className = 'expand-modal';
+  modal.innerHTML = `
+    <button class="close-btn">Close ✕</button>
+    <div class="frame">
+      <div class="frame-title">${esc(title)}</div>
+      <div class="table-holder"></div>
+    </div>
+  `;
+  modal.querySelector('.table-holder').appendChild(tableEl.cloneNode(true));
+  document.body.appendChild(modal);
+  document.body.style.overflow = 'hidden';
+  const close = () => {
+    modal.remove();
+    document.body.style.overflow = '';
+    document.removeEventListener('keydown', onKey);
+  };
+  const onKey = (ev) => { if (ev.key === 'Escape') close(); };
+  modal.querySelector('.close-btn').onclick = close;
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+  document.addEventListener('keydown', onKey);
+}
+
+// Event delegation: any .expand-btn click opens its sibling table in the modal
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest && e.target.closest('.expand-btn');
+  if (!btn) return;
+  const container = btn.closest('.section, .drill-down');
+  if (!container) return;
+  const table = container.querySelector('table.pivot');
+  if (!table) return;
+  const titleEl = container.querySelector('h3, h4');
+  openExpandModal(table, titleEl ? titleEl.textContent.trim() : 'Pivot Table');
+});
 
 const fileInput = $('#file');
 const dropZone = $('#drop-zone');
