@@ -98,22 +98,24 @@ input,select { font-family: inherit; }
   width: 100%;
 }
 table.pivot {
-  width: 100%;
+  width: auto;
+  max-width: 100%;
   table-layout: auto;
   border-collapse: collapse;
-  font-size: 14px;
+  font-size: 15px;
   font-feature-settings: "tnum" 1;
   background: white;
   border-radius: 10px;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
 }
 table.pivot thead th {
   background: #0a2647; color: white;
   font-weight: 700;
   font-size: 14px;
   text-align: center;
-  padding: 8px 8px;
+  padding: 8px 12px;
   border: 1px solid #052238;
   text-transform: uppercase;
   letter-spacing: 0.3px;
@@ -123,18 +125,18 @@ table.pivot thead th {
 table.pivot tbody th {
   background: #1a5276; color: white;
   font-weight: 600;
-  font-size: 14px;
+  font-size: 15px;
   text-align: left;
-  padding: 6px 8px;
+  padding: 6px 10px;
   border: 1px solid #0a2647;
   white-space: nowrap;
   -webkit-font-smoothing: antialiased;
 }
 table.pivot tbody td {
-  padding: 6px 8px;
+  padding: 6px 10px;
   border: 1px solid #d0d7de;
   text-align: center;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   color: #0a2647;
   white-space: nowrap;
@@ -142,7 +144,7 @@ table.pivot tbody td {
   letter-spacing: 0.2px;
 }
 table.pivot tbody tr.grand-total th,
-table.pivot tbody tr.grand-total td { font-size: 14px; font-weight: 800; }
+table.pivot tbody tr.grand-total td { font-size: 15px; font-weight: 800; }
 table.pivot tbody tr.grand-total th, table.pivot tbody tr.grand-total td { background: #cfe2ff !important; color: #0a2647 !important; font-weight: 700; }
 table.pivot tbody td.gt-col { background: #e7f0ff; font-weight: 600; }
 table.pivot tbody td.pct-low { background-color: #d5f5e3; }
