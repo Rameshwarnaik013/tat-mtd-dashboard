@@ -148,6 +148,18 @@ table.pivot tbody td.pct-hi { background-color: #f5b7b1; }
   z-index: 10001;
 }
 .expand-modal .close-btn:hover { background: #f5f7fa; }
+.expand-modal .dl-btn {
+  position: fixed; top: 18px; right: 130px;
+  background: #0a2647; border: 0; color: white;
+  padding: 9px 20px; border-radius: 8px;
+  font-weight: 700; font-size: 0.9rem;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+  z-index: 10001;
+  display: flex; align-items: center; gap: 6px;
+}
+.expand-modal .dl-btn:hover { background: #1a3a6b; }
+.expand-modal .dl-btn:disabled { opacity: 0.6; cursor: wait; }
 
 /* Crisp screenshot-friendly table inside modal */
 .expand-modal table.pivot {
@@ -283,6 +295,8 @@ const state = {
   expanded: { wh: false, item: false, ch: false, cust: false, date: true },
   drillCh: { dispatch: null, delivery: null },
   charts: {},
+  vizMode: 'dispatch',           // 'dispatch' | 'delivery' | 'mtd'
+  vizSubTab: { dispatch: 'date', delivery: 'date' },
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -630,7 +644,7 @@ function applyDatePreset(preset) {
 }
 
 function renderMain() {
-  const tabs = [['dispatch','DISPATCH TAT'],['delivery','DELIVERY TAT'],['mtd-wh','MTD DISPATCH'],['mtd-ch','MTD SALES CHANNEL'],['mtd-inv','MTD SALE INVOICE']];
+  const tabs = [['dispatch','DISPATCH TAT'],['delivery','DELIVERY TAT'],['mtd-wh','MTD DISPATCH'],['mtd-ch','MTD SALES CHANNEL'],['mtd-inv','MTD SALE INVOICE'],['viz','VISUALISATION']];
   $('#main').innerHTML = `<nav class="parent-tabs">${tabs.map(([k,l]) => `<button data-tab="${k}" class="${state.activeTab===k?'active':''}">${l}</button>`).join('')}</nav>
     <div id="tab-content"></div>
     <div class="export-row"><button class="btn-export" id="btn-export">Download All Pivots (Excel)</button></div>`;
@@ -649,6 +663,7 @@ function renderTabContent() {
   else if (state.activeTab === 'mtd-wh') renderMtdWh(fdf);
   else if (state.activeTab === 'mtd-ch') renderMtdCross(fdf, 'Sales_Channel', 'Sales Channel');
   else if (state.activeTab === 'mtd-inv') renderMtdCross(fdf, '_dateStr', 'Invoice Date');
+  else if (state.activeTab === 'viz') renderVisualisation(fdf);
 }
 
 function renderTat(fdf, tatKey, label, cats, colors, pfx) {
@@ -683,23 +698,21 @@ function renderTat(fdf, tatKey, label, cats, colors, pfx) {
   let contentHtml = `<div class="section">
     <div class="section-header"><h3>${esc(label)} by ${esc(subLabel)}</h3><button class="expand-btn">⛶ Expand for screenshot</button></div>
     ${renderPctTable(pivot)}
-    <div class="chart-wrap"><canvas id="chart-${pfx}"></canvas></div>
   </div>`;
 
-  let drillPivot = null, drillCh = null;
   if (sub === 'channel') {
     const channels = [...new Set(fdf.map(r => r['Sales_Channel']).filter(Boolean))].sort();
     if (channels.length > 0) {
-      drillCh = state.drillCh[pfx] || channels[0];
+      let drillCh = state.drillCh[pfx] || channels[0];
       if (!channels.includes(drillCh)) drillCh = channels[0];
       state.drillCh[pfx] = drillCh;
       const chData = fdf.filter(r => r['Sales_Channel'] === drillCh);
-      drillPivot = buildPctPivot(chData, 'Customer', tatKey, cats);
+      const drillPivot = buildPctPivot(chData, 'Customer', tatKey, cats);
       contentHtml += `<div class="drill-down">
         <div class="section-header"><h4>Customer Breakdown within Sales Channel</h4><button class="expand-btn">⛶ Expand for screenshot</button></div>
         <select id="drill-${pfx}">${channels.map(c => `<option value="${esc(c)}" ${c===drillCh?'selected':''}>${esc(c)}</option>`).join('')}</select>
         ${renderPctTable(drillPivot)}
-        <div class="chart-wrap"><canvas id="chart-${pfx}-drill"></canvas></div></div>`;
+      </div>`;
     }
   }
 
@@ -708,9 +721,6 @@ function renderTat(fdf, tatKey, label, cats, colors, pfx) {
   document.querySelectorAll('[data-subtab]').forEach(el => { el.onclick = () => { state.activeSubTab[el.dataset.pfx] = el.dataset.subtab; renderTabContent(); }; });
   const drillSel = $(`#drill-${pfx}`);
   if (drillSel) drillSel.onchange = () => { state.drillCh[pfx] = drillSel.value; renderTabContent(); };
-
-  renderStackedChart(`chart-${pfx}`, pivot, cats, colors, `${label} - ${subLabel}`);
-  if (drillPivot) renderStackedChart(`chart-${pfx}-drill`, drillPivot, cats, colors, `Customers in ${drillCh}`);
 }
 
 function renderMtdWh(fdf) {
@@ -725,9 +735,8 @@ function renderMtdWh(fdf) {
       <thead><tr><th>From Warehouse</th><th>Stock Qty In Kg</th></tr></thead>
       <tbody>${pivot.rows.map(r => `<tr><th>${esc(shortenWh(r.key))}</th><td>${formatIndian(r.value)}</td></tr>`).join('')}
         <tr class="grand-total"><th>Grand Total</th><td>${formatIndian(pivot.total)}</td></tr></tbody></table></div>
-    <div class="chart-wrap"><canvas id="chart-mtd-wh"></canvas></div></div>`;
+    </div>`;
   $('#tab-content').innerHTML = html;
-  renderBarChart('chart-mtd-wh', pivot.rows.map(r => shortenWh(r.key)), pivot.rows.map(r => r.value), 'Stock Qty', '#1a5276', 'Stock Quantity by Warehouse');
 }
 
 function renderMtdCross(fdf, rowKey, label) {
@@ -747,6 +756,78 @@ function renderMtdCross(fdf, rowKey, label) {
 }
 
 function hasStockQty() { return state.rows.length > 0 && 'Stock Qty In Kg' in state.rows[0]; }
+
+// VISUALISATION tab - houses all charts that were previously inline in each tab
+function renderVisualisation(fdf) {
+  const modes = [['dispatch','Dispatch TAT'],['delivery','Delivery TAT'],['mtd','MTD - Stock by Warehouse']];
+  const mode = state.vizMode || 'dispatch';
+
+  let html = `<nav class="sub-tabs">${modes.map(([k,l]) =>
+    `<button data-vizmode="${k}" class="${mode===k?'active':''}">${esc(l)}</button>`
+  ).join('')}</nav>`;
+
+  if (mode === 'mtd') {
+    if (!hasStockQty()) {
+      html += '<div class="warning">Column "Stock Qty In Kg" not found.</div>';
+      $('#tab-content').innerHTML = html;
+      attachVizListeners();
+      return;
+    }
+    const pivot = buildSumSingle(fdf, 'From Warehouse', 'Stock Qty In Kg');
+    html += `<div class="section" id="viz-section">
+      <div class="section-header"><h3>Stock Quantity by Warehouse</h3>
+        <button class="expand-btn" data-target="viz-chart-card">⛶ Expand for screenshot</button>
+      </div>
+      <div class="chart-wrap" id="viz-chart-card" style="height: 420px;"><canvas id="chart-viz"></canvas></div>
+    </div>`;
+    $('#tab-content').innerHTML = html;
+    attachVizListeners();
+    renderBarChart('chart-viz', pivot.rows.map(r => shortenWh(r.key)), pivot.rows.map(r => r.value), 'Stock Qty', '#1a5276', 'Stock Quantity by Warehouse');
+    return;
+  }
+
+  // TAT mode (dispatch or delivery)
+  const tatKey  = mode === 'dispatch' ? 'Dis TAT'        : 'Delivery TAT';
+  const label   = mode === 'dispatch' ? 'Dispatch TAT'   : 'Delivery TAT';
+  const cats    = mode === 'dispatch' ? DISPATCH_CATS    : DELIVERY_CATS;
+  const colors  = mode === 'dispatch' ? DISPATCH_COLORS  : DELIVERY_COLORS;
+
+  const subs = [['date','Invoice Date'],['item','MIS Item Group'],['channel','Sales Channel'],['warehouse','From Warehouse']];
+  const sub = (state.vizSubTab && state.vizSubTab[mode]) || 'date';
+
+  html += `<nav class="sub-tabs" style="margin-top:8px;">${subs.map(([k,l]) =>
+    `<button data-vizsubtab="${k}" class="${sub===k?'active':''}">${esc(l)}</button>`
+  ).join('')}</nav>`;
+
+  const subCol   = sub==='date' ? '_dateStr' : sub==='item' ? 'New MIS Item Group' : sub==='channel' ? 'Sales_Channel' : 'From Warehouse';
+  const subLabel = subs.find(s => s[0]===sub)[1];
+  const pivot    = buildPctPivot(fdf, subCol, tatKey, cats);
+
+  html += `<div class="section" id="viz-section">
+    <div class="section-header"><h3>${esc(label)} - ${esc(subLabel)}</h3>
+      <button class="expand-btn" data-target="viz-chart-card">⛶ Expand for screenshot</button>
+    </div>
+    <div class="chart-wrap" id="viz-chart-card" style="height: 460px;"><canvas id="chart-viz"></canvas></div>
+  </div>`;
+
+  $('#tab-content').innerHTML = html;
+  attachVizListeners();
+  renderStackedChart('chart-viz', pivot, cats, colors, `${label} - ${subLabel}`);
+}
+
+function attachVizListeners() {
+  document.querySelectorAll('[data-vizmode]').forEach(el => {
+    el.onclick = () => { state.vizMode = el.dataset.vizmode; renderTabContent(); };
+  });
+  document.querySelectorAll('[data-vizsubtab]').forEach(el => {
+    el.onclick = () => {
+      const m = state.vizMode || 'dispatch';
+      if (!state.vizSubTab) state.vizSubTab = {};
+      state.vizSubTab[m] = el.dataset.vizsubtab;
+      renderTabContent();
+    };
+  });
+}
 
 function renderPctTable(pivot) {
   const cls = (v) => v >= 50 ? 'pct-hi' : v >= 30 ? 'pct-mid' : 'pct-low';
@@ -1023,20 +1104,64 @@ function autoFit(ws) {
   });
 }
 
-// Expand any table into a clean centered frame for screenshots
-function openExpandModal(tableEl, title) {
+// Lazy-load html2canvas for high-DPI PNG generation
+let _h2cLoaded = false;
+function loadH2C() {
+  if (_h2cLoaded) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+    s.onload = () => { _h2cLoaded = true; resolve(); };
+    s.onerror = () => reject(new Error('Failed to load html2canvas'));
+    document.head.appendChild(s);
+  });
+}
+
+// Expand any table or chart into a clean centered frame for screenshots
+function openExpandModal(srcEl, title) {
   const modal = document.createElement('div');
   modal.className = 'expand-modal';
   modal.innerHTML = `
+    <button class="dl-btn">📥 Download PNG</button>
     <button class="close-btn">Close ✕</button>
     <div class="frame">
       <div class="frame-title">${esc(title)}</div>
       <div class="table-holder"></div>
     </div>
   `;
-  modal.querySelector('.table-holder').appendChild(tableEl.cloneNode(true));
+  const holder = modal.querySelector('.table-holder');
+  const isCanvas = srcEl.tagName === 'CANVAS' || srcEl.querySelector('canvas');
+  if (isCanvas) {
+    // For charts: render a fresh enlarged copy of the chart
+    const newCanvas = document.createElement('canvas');
+    newCanvas.style.width = '1100px'; newCanvas.style.height = '500px';
+    newCanvas.style.maxWidth = '100%';
+    holder.style.width = '1100px';
+    holder.style.maxWidth = '92vw';
+    holder.appendChild(newCanvas);
+    modal._chartCanvas = newCanvas;
+    modal._chartSource = srcEl.tagName === 'CANVAS' ? srcEl : srcEl.querySelector('canvas');
+  } else {
+    holder.appendChild(srcEl.cloneNode(true));
+  }
   document.body.appendChild(modal);
   document.body.style.overflow = 'hidden';
+
+  // If chart, re-render into the new canvas at higher size
+  if (modal._chartCanvas && modal._chartSource) {
+    const sourceChart = Chart.getChart(modal._chartSource);
+    if (sourceChart) {
+      const cfg = JSON.parse(JSON.stringify(sourceChart.config));
+      // Bump font size for crisp screenshot
+      cfg.options = cfg.options || {};
+      cfg.options.responsive = true;
+      cfg.options.maintainAspectRatio = false;
+      cfg.options.devicePixelRatio = 3;
+      cfg.options.animation = false;
+      new Chart(modal._chartCanvas.getContext('2d'), cfg);
+    }
+  }
+
   const close = () => {
     modal.remove();
     document.body.style.overflow = '';
@@ -1046,18 +1171,52 @@ function openExpandModal(tableEl, title) {
   modal.querySelector('.close-btn').onclick = close;
   modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
   document.addEventListener('keydown', onKey);
+
+  const dlBtn = modal.querySelector('.dl-btn');
+  dlBtn.onclick = async () => {
+    dlBtn.disabled = true;
+    dlBtn.innerHTML = '⏳ Building image...';
+    try {
+      const frame = modal.querySelector('.frame');
+      await loadH2C();
+      const canvas = await html2canvas(frame, {
+        scale: 3,           // 3x device pixel resolution -> crisp on WhatsApp
+        backgroundColor: '#ffffff',
+        useCORS: true,
+        logging: false,
+        windowWidth: document.documentElement.scrollWidth,
+        windowHeight: document.documentElement.scrollHeight,
+      });
+      canvas.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const safe = title.replace(/[^a-z0-9-_ ]/gi, '').trim().replace(/\s+/g, '_') || 'snapshot';
+        a.href = url; a.download = `${safe}.png`; a.click();
+        URL.revokeObjectURL(url);
+      }, 'image/png', 1.0);
+    } catch (err) {
+      console.error(err); alert('PNG export failed: ' + err.message);
+    } finally {
+      dlBtn.disabled = false;
+      dlBtn.innerHTML = '📥 Download PNG';
+    }
+  };
 }
 
-// Event delegation: any .expand-btn click opens its sibling table in the modal
+// Event delegation: any .expand-btn click opens its sibling table or chart in the modal
 document.addEventListener('click', (e) => {
   const btn = e.target.closest && e.target.closest('.expand-btn');
   if (!btn) return;
   const container = btn.closest('.section, .drill-down');
   if (!container) return;
-  const table = container.querySelector('table.pivot');
-  if (!table) return;
+  // Prefer canvas (chart) target if data-target points to a chart wrap; else table
+  const targetId = btn.getAttribute('data-target');
+  let el = null;
+  if (targetId) el = document.getElementById(targetId);
+  if (!el) el = container.querySelector('canvas') || container.querySelector('table.pivot');
+  if (!el) return;
   const titleEl = container.querySelector('h3, h4');
-  openExpandModal(table, titleEl ? titleEl.textContent.trim() : 'Pivot Table');
+  openExpandModal(el, titleEl ? titleEl.textContent.trim() : 'Snapshot');
 });
 
 const fileInput = $('#file');
