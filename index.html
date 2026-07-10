@@ -52,45 +52,73 @@ input,select { font-family: inherit; }
 .btn-reset { background: #f5f7fa; color: #0a2647; border: 1px solid #d0d7de; padding: 8px 16px; border-radius: 6px; font-size: 0.9rem; font-weight: 600; }
 .btn-reset:hover { background: #e8eef5; }
 
-.layout { display: flex; flex: 1; overflow: hidden; }
-.sidebar { width: 260px; background: white; border-right: 1px solid #e8eef5; overflow-y: auto; padding: 14px; flex-shrink: 0; }
-.sidebar h2 { font-size: 1.05rem; font-weight: 700; color: #0a2647; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 2px solid #0a2647; }
 .main-content { flex: 1; overflow-y: auto; padding: 18px 24px; min-width: 0; }
 
-.filter-group { margin-bottom: 10px; border: 1px solid #e8eef5; border-radius: 8px; overflow: hidden; background: white; }
-.filter-header { padding: 10px 12px; background: #f5f7fa; display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; font-size: 0.86rem; font-weight: 600; color: #0a2647; }
-.count-badge { font-size: 0.72rem; background: #0a2647; color: white; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
-.filter-body { padding: 10px 12px; border-top: 1px solid #e8eef5; }
-.filter-body input.search { width: 100%; padding: 6px 10px; border: 1px solid #d0d7de; border-radius: 4px; font-size: 0.85rem; margin-bottom: 8px; }
+/* ---- Always-visible top filter bar ---- */
+.filterbar {
+  background: white;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 12px 24px 14px;
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px;
+  box-shadow: 0 2px 8px rgba(15,23,42,0.05);
+  position: relative; z-index: 500;
+  flex-shrink: 0;
+}
+.fb-field { display: flex; flex-direction: column; gap: 5px; }
+.fb-field > label { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.8px; color: #64748b; text-transform: uppercase; }
+.fb-date-row { display: flex; align-items: center; gap: 6px; }
+.fb-date-row input { padding: 8px 10px; border: 1.5px solid #dbe3ec; border-radius: 8px; font-size: 0.86rem; font-weight: 600; color: #0f172a; background: #f8fafc; }
+.fb-date-row input:hover, .fb-date-row input:focus { border-color: #2563eb; background: #fff; outline: none; }
+.fb-date-sep { color: #94a3b8; font-weight: 700; }
+.fb-presets { display: flex; gap: 4px; }
+.fb-presets button { padding: 8px 12px; font-size: 0.78rem; font-weight: 700; background: #f8fafc; border: 1.5px solid #dbe3ec; border-radius: 8px; color: #475569; }
+.fb-presets button:hover { border-color: #2563eb; color: #2563eb; background: #f0f6ff; }
+.fb-presets button.active { background: #2563eb; color: white; border-color: #2563eb; }
+.fb-dd { position: relative; min-width: 165px; }
+.fb-dd-btn {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  background: #f8fafc; border: 1.5px solid #dbe3ec; border-radius: 8px;
+  padding: 8px 12px; font-size: 0.86rem; font-weight: 600; color: #0f172a;
+}
+.fb-dd-btn:hover { border-color: #2563eb; background: #f0f6ff; }
+.fb-dd-btn .badge { background: #2563eb; color: white; font-size: 0.7rem; font-weight: 700; padding: 2px 8px; border-radius: 10px; white-space: nowrap; }
+.fb-dd-btn .caret { color: #94a3b8; font-size: 0.68rem; }
+.fb-dd.open .fb-dd-btn { border-color: #2563eb; background: #fff; box-shadow: 0 0 0 3px rgba(37,99,235,0.13); }
+.fb-panel {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 600;
+  width: 300px; background: white; border: 1px solid #dbe3ec; border-radius: 12px;
+  box-shadow: 0 14px 38px rgba(15,23,42,0.16); padding: 10px;
+}
+.fb-panel input.search { width: 100%; padding: 7px 10px; border: 1.5px solid #dbe3ec; border-radius: 8px; font-size: 0.85rem; margin-bottom: 8px; }
+.fb-panel input.search:focus { border-color: #2563eb; outline: none; }
 .filter-actions { display: flex; gap: 6px; margin-bottom: 8px; }
-.filter-actions button { flex: 1; padding: 5px 10px; background: #f5f7fa; border: 1px solid #d0d7de; border-radius: 4px; font-size: 0.78rem; font-weight: 600; color: #0a2647; }
-.filter-actions button:hover { background: #e8eef5; }
-.filter-list { max-height: 180px; overflow-y: auto; border: 1px solid #e8eef5; border-radius: 4px; padding: 4px; }
-.filter-list label { display: flex; align-items: center; gap: 6px; padding: 4px 6px; font-size: 0.82rem; cursor: pointer; border-radius: 3px; }
-.filter-list label:hover { background: #f5f7fa; }
-.filter-list input[type="checkbox"] { margin: 0; cursor: pointer; }
+.filter-actions button { flex: 1; padding: 6px 10px; background: #f8fafc; border: 1px solid #dbe3ec; border-radius: 6px; font-size: 0.78rem; font-weight: 700; color: #334155; }
+.filter-actions button:hover { background: #eef2f7; color: #2563eb; }
+.filter-list { max-height: 230px; overflow-y: auto; border: 1px solid #eef2f7; border-radius: 8px; padding: 4px; }
+.filter-list label { display: flex; align-items: center; gap: 7px; padding: 5px 7px; font-size: 0.83rem; cursor: pointer; border-radius: 5px; }
+.filter-list label:hover { background: #f0f6ff; }
+.filter-list input[type="checkbox"] { margin: 0; cursor: pointer; accent-color: #2563eb; }
+.fb-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+.fb-rows { text-align: right; line-height: 1.15; }
+.fb-rows .big { display: block; font-size: 1.25rem; font-weight: 800; color: #0a2647; }
+.fb-rows .sub { font-size: 0.7rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 700; }
 
-.date-presets { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
-.date-presets button { padding: 4px 8px; font-size: 0.74rem; background: #f5f7fa; border: 1px solid #d0d7de; border-radius: 4px; color: #0a2647; }
-.date-presets button.active { background: #0a2647; color: white; border-color: #0a2647; }
-.date-range { display: flex; gap: 6px; }
-.date-range input { flex: 1; padding: 5px 8px; border: 1px solid #d0d7de; border-radius: 4px; font-size: 0.8rem; }
+.parent-tabs { display: flex; gap: 2px; margin-bottom: 18px; background: white; border-radius: 12px 12px 0 0; border-bottom: 2px solid #e2e8f0; overflow-x: auto; padding: 4px 8px 0; box-shadow: 0 1px 4px rgba(15,23,42,0.04); }
+.parent-tabs button { display: flex; align-items: center; gap: 8px; padding: 14px 20px; background: transparent; border: 0; border-bottom: 3px solid transparent; font-size: 0.95rem; font-weight: 700; color: #475569; letter-spacing: 0.3px; white-space: nowrap; flex-shrink: 0; transition: color 0.12s, background 0.12s; }
+.parent-tabs button:hover { color: #2563eb; background: #f0f6ff; }
+.parent-tabs button.active { color: #2563eb; border-bottom-color: #2563eb; background: #f0f6ff; }
+.parent-tabs .tab-ic { font-size: 1.05rem; line-height: 1; }
 
-.parent-tabs { display: flex; gap: 4px; margin-bottom: 18px; border-bottom: 2px solid #0a2647; overflow-x: auto; }
-.parent-tabs button { padding: 13px 22px; background: #f0f3f7; border: 0; font-size: 0.98rem; font-weight: 700; color: #0a2647; border-radius: 8px 8px 0 0; letter-spacing: 0.4px; white-space: nowrap; flex-shrink: 0; }
-.parent-tabs button:hover { background: #e2e8f0; }
-.parent-tabs button.active { background: #0a2647; color: white; }
+.sub-tabs { display: flex; gap: 6px; margin-bottom: 16px; border-bottom: 1.5px solid #e2e8f0; overflow-x: auto; flex-wrap: wrap; }
+.sub-tabs button { padding: 10px 18px; background: transparent; border: 0; border-bottom: 3px solid transparent; font-size: 0.96rem; color: #64748b; white-space: nowrap; font-weight: 600; }
+.sub-tabs button:hover { background: #f0f6ff; color: #2563eb; }
+.sub-tabs button.active { color: #2563eb; border-bottom-color: #2563eb; background: #f0f6ff; font-weight: 700; }
 
-.sub-tabs { display: flex; gap: 6px; margin-bottom: 16px; border-bottom: 1px solid #e8eef5; overflow-x: auto; flex-wrap: wrap; }
-.sub-tabs button { padding: 11px 20px; background: transparent; border: 0; font-size: 1rem; color: #475569; border-radius: 8px 8px 0 0; white-space: nowrap; font-weight: 600; }
-.sub-tabs button:hover { background: #eef2f7; color: #0a2647; }
-.sub-tabs button.active { background: #1a5276; color: white; font-weight: 700; border-bottom: 2px solid #0a2647; }
-
-.kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 20px; }
-.kpi-card { background: white; padding: 16px 20px; border-radius: 10px; border: 1px solid #e8eef5; border-left: 5px solid #0a2647; box-shadow: 0 1px 4px rgba(0,0,0,0.04); transition: transform 0.15s, box-shadow 0.15s; }
-.kpi-card:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.07); }
-.kpi-card .label { font-size: 0.82rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.6px; font-weight: 700; }
-.kpi-card .value { font-size: 1.6rem; font-weight: 800; color: #0a2647; margin-top: 6px; -webkit-font-smoothing: antialiased; }
+.kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(185px, 1fr)); gap: 14px; margin-bottom: 20px; }
+.kpi-card { background: white; padding: 16px 20px; border-radius: 12px; border: 1px solid #e8eef5; box-shadow: 0 1px 4px rgba(0,0,0,0.04); transition: transform 0.15s, box-shadow 0.15s; }
+.kpi-card:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,0.09); }
+.kpi-card .label { font-size: 0.78rem; color: #475569; text-transform: uppercase; letter-spacing: 0.7px; font-weight: 800; }
+.kpi-card .value { font-size: 1.7rem; font-weight: 800; color: #0a2647; margin-top: 6px; -webkit-font-smoothing: antialiased; }
 
 .section h3 { font-size: 1.15rem; color: #0a2647; font-weight: 700; margin-bottom: 12px; }
 .table-wrap {
@@ -112,46 +140,46 @@ table.pivot {
   font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
 }
 table.pivot thead th {
-  background: #0a2647; color: white;
-  font-weight: 700;
-  font-size: 15px;
+  background: #f1f5f9; color: #334155;
+  font-weight: 800;
+  font-size: 14px;
   text-align: center;
   padding: 12px 14px;
-  border: 1px solid #052238;
+  border: 1px solid #e2e8f0;
+  border-bottom: 2px solid #cbd5e1;
   text-transform: uppercase;
-  letter-spacing: 0.45px;
+  letter-spacing: 0.55px;
   white-space: nowrap;
   -webkit-font-smoothing: antialiased;
 }
 table.pivot tbody th {
-  background: #1a5276; color: white;
-  font-weight: 600;
+  background: white; color: #0f172a;
+  font-weight: 700;
   font-size: 16px;
   text-align: left;
   padding: 10px 14px;
-  border: 1px solid #0a2647;
+  border: 1px solid #e8eef5;
   white-space: nowrap;
   -webkit-font-smoothing: antialiased;
   width: 1%;
 }
+table.pivot tbody tr:hover th { background: #f8fafc; }
 table.pivot tbody td {
   padding: 10px 14px;
-  border: 1px solid #d0d7de;
+  border: 1px solid #e8eef5;
   text-align: center;
   font-size: 16px;
-  font-weight: 600;
-  color: #0a2647;
+  font-weight: 700;
+  color: #1e293b;
   white-space: nowrap;
   -webkit-font-smoothing: antialiased;
   letter-spacing: 0.3px;
 }
 table.pivot tbody tr.grand-total th,
-table.pivot tbody tr.grand-total td { font-size: 17px; font-weight: 800; background: #cfe2ff !important; color: #0a2647 !important; }
-table.pivot tbody tr.grand-total th, table.pivot tbody tr.grand-total td { background: #cfe2ff !important; color: #0a2647 !important; font-weight: 700; }
-table.pivot tbody td.gt-col { background: #e7f0ff; font-weight: 600; }
-table.pivot tbody td.pct-low { background-color: #d5f5e3; }
-table.pivot tbody td.pct-mid { background-color: #fdebd0; }
-table.pivot tbody td.pct-hi { background-color: #f5b7b1; }
+table.pivot tbody tr.grand-total td { font-size: 17px; font-weight: 800; color: #0a2647; border-top: 2px solid #cbd5e1; }
+table.pivot tbody tr.grand-total th { background: #dbeafe; }
+table.pivot tbody tr.grand-total td { background: #eff6ff; }
+table.pivot tbody td.gt-col { background: #eff6ff; font-weight: 800; }
 
 .chart-wrap { background: white; border-radius: 8px; border: 1px solid #e8eef5; padding: 16px; margin-bottom: 16px; height: 360px; position: relative; }
 
@@ -255,9 +283,6 @@ table.pivot tbody td.pct-hi { background-color: #f5b7b1; }
 .btn-export:hover { background: #1a3a6b; }
 .btn-export:disabled { opacity: 0.6; cursor: wait; }
 
-.filter-summary { margin-top: 16px; padding-top: 12px; border-top: 1px solid #e8eef5; font-size: 0.75rem; color: #6b7280; text-align: center; line-height: 1.6; }
-.filter-summary .big { font-size: 1.4rem; color: #0a2647; font-weight: 700; display: block; margin-bottom: 2px; }
-
 .warning { background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; }
 .spinner-sm { display: inline-block; width: 16px; height: 16px; border: 2px solid #e8eef5; border-top-color: #0a2647; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 6px; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -272,8 +297,9 @@ table.pivot tbody td.pct-hi { background-color: #f5b7b1; }
 #parse-status .spinner-lg { display: inline-block; width: 32px; height: 32px; border: 3px solid #e8eef5; border-top-color: #0a2647; border-radius: 50%; animation: spin 0.7s linear infinite; margin-bottom: 12px; }
 
 @media (max-width: 768px) {
-  .layout { flex-direction: column; }
-  .sidebar { width: 100%; max-height: 45vh; border-right: 0; border-bottom: 1px solid #e8eef5; }
+  .filterbar { gap: 10px; padding: 10px 14px 12px; }
+  .fb-dd { min-width: 140px; }
+  .fb-right { margin-left: 0; width: 100%; justify-content: space-between; }
   .drop-zone { padding: 56px 24px; }
   .folder-icon { font-size: 48px; }
   .drop-zone .main-text { font-size: 1.1rem; }
@@ -301,10 +327,8 @@ table.pivot tbody td.pct-hi { background-color: #f5b7b1; }
     <h1>TAT &amp; MTD Dashboard</h1>
     <button class="btn-reset" id="reload">Upload Different File</button>
   </header>
-  <div class="layout">
-    <aside class="sidebar" id="sidebar"></aside>
-    <main class="main-content" id="main"></main>
-  </div>
+  <div class="filterbar" id="filterbar"></div>
+  <main class="main-content" id="main"></main>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -342,7 +366,7 @@ const state = {
   options: { warehouses: [], items: [], channels: [], customers: [] },
   activeTab: 'dispatch',
   activeSubTab: { dispatch: 'date', delivery: 'date' },
-  expanded: { wh: false, item: false, ch: false, cust: false, date: true },
+  openFilter: null,              // which filter dropdown is open: 'wh' | 'item' | 'ch' | 'cust' | null
   drillCh: { dispatch: null, delivery: null },
   charts: {},
   vizMode: 'dispatch',           // 'dispatch' | 'delivery' | 'mtd'
@@ -368,6 +392,32 @@ function formatIndian(n) {
 function formatDate(d) {
   const y = d.getFullYear(); const m = String(d.getMonth()+1).padStart(2,'0'); const dd = String(d.getDate()).padStart(2,'0');
   return `${y}-${m}-${dd}`;
+}
+
+// Row-wise heat colouring: highest value = green (hue 120), lowest = red (hue 0).
+// Returns an inline style; empty string when all values in the range are equal.
+function heatStyle(v, min, max) {
+  if (!(max > min)) return '';
+  const t = Math.max(0, Math.min(1, (v - min) / (max - min)));
+  const hue = Math.round(t * 120);
+  return `background-color:hsl(${hue},72%,${Math.round(86 - t * 5)}%);`;
+}
+
+// Darken a #rrggbb colour for readable text on its own light tint
+function shade(hex, f) {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.round(((n >> 16) & 255) * (1 - f));
+  const g = Math.round(((n >> 8) & 255) * (1 - f));
+  const b = Math.round((n & 255) * (1 - f));
+  return `rgb(${r},${g},${b})`;
+}
+
+// Reference-style KPI card: soft tinted background + strong coloured value
+function kpiCard(label, value, color) {
+  return `<div class="kpi-card" style="background:${color}14;border:1px solid ${color}3d;border-left:5px solid ${color};">
+    <div class="label">${label}</div>
+    <div class="value" style="color:${shade(color, 0.22)};">${value}</div>
+  </div>`;
 }
 
 function parseExcelDate(v) {
@@ -577,67 +627,70 @@ function buildSumCross(data, rowKey, colKey, valueKey) {
 function showDashboard() { $('#upload').style.display = 'none'; $('#dashboard').classList.remove('hidden'); }
 function showUpload() { $('#upload').style.display = 'flex'; $('#dashboard').classList.add('hidden'); }
 
-function render() { renderSidebar(); renderMain(); }
+function render() { renderFilterBar(); renderMain(); }
 
-function renderSidebar() {
+const SET_KEY = { wh: 'warehouses', item: 'items', ch: 'channels', cust: 'customers' };
+const FILTER_DEFS = [
+  ['wh', 'Warehouse'],
+  ['item', 'Item Group'],
+  ['ch', 'Sales Channel'],
+  ['cust', 'Customer'],
+];
+
+function renderFilterBar() {
   const f = state.filters, fdf = getFiltered();
-  let html = `<h2>Filters</h2>
-    <button class="btn-reset" style="width:100%; margin-bottom:12px;" id="reset-filters">Reset All Filters</button>`;
-  html += renderDateFilter();
-  html += renderMultiFilter('wh', 'From Warehouse', state.options.warehouses, f.warehouses);
-  html += renderMultiFilter('item', 'MIS Item Group', state.options.items, f.items);
-  html += renderMultiFilter('ch', 'Sales Channel', state.options.channels, f.channels);
-  html += renderMultiFilter('cust', 'Customer', state.options.customers, f.customers);
-  html += `<div class="filter-summary">
-    <span class="big">${fdf.length.toLocaleString()}</span>Filtered Rows
-    <div style="margin-top:6px;">WH ${f.warehouses.size}/${state.options.warehouses.length} · Item ${f.items.size}/${state.options.items.length} · Ch ${f.channels.size}/${state.options.channels.length} · Cust ${f.customers.size}/${state.options.customers.length}</div>
-  </div>`;
-  $('#sidebar').innerHTML = html;
-  attachSidebarListeners();
-}
-
-function renderDateFilter() {
-  const f = state.filters, expanded = state.expanded.date;
-  const presets = [['all','All'],['mtd','MTD'],['7d','7d'],['15d','15d'],['30d','30d'],['custom','Custom']];
-  return `<div class="filter-group">
-    <div class="filter-header" data-toggle="date"><span>Invoice Date Range</span><span class="count-badge">${expanded?'▾':'▸'}</span></div>
-    ${expanded ? `<div class="filter-body">
-      <div class="date-presets">${presets.map(([k,l]) => `<button data-preset="${k}" class="${f.datePreset === k ? 'active':''}">${l}</button>`).join('')}</div>
-      <div class="date-range">
+  const presets = [['all','All'],['mtd','MTD'],['7d','7D'],['15d','15D'],['30d','30D']];
+  let html = `
+    <div class="fb-field">
+      <label>Invoice Date</label>
+      <div class="fb-date-row">
         <input type="date" id="date-start" value="${f.startDate?formatDate(f.startDate):''}" min="${f.minDate?formatDate(f.minDate):''}" max="${f.maxDate?formatDate(f.maxDate):''}">
+        <span class="fb-date-sep">→</span>
         <input type="date" id="date-end" value="${f.endDate?formatDate(f.endDate):''}" min="${f.minDate?formatDate(f.minDate):''}" max="${f.maxDate?formatDate(f.maxDate):''}">
       </div>
-    </div>` : ''}
-  </div>`;
+    </div>
+    <div class="fb-field">
+      <label>Quick Range</label>
+      <div class="fb-presets">${presets.map(([k,l]) => `<button data-preset="${k}" class="${f.datePreset === k ? 'active':''}">${l}</button>`).join('')}</div>
+    </div>`;
+  for (const [key, label] of FILTER_DEFS) html += renderFilterDropdown(key, label, state.options[SET_KEY[key]], f[SET_KEY[key]]);
+  html += `
+    <div class="fb-right">
+      <div class="fb-rows"><span class="big">${fdf.length.toLocaleString()}</span><span class="sub">Filtered Rows</span></div>
+      <button class="btn-reset" id="reset-filters">↺ Reset</button>
+    </div>`;
+  $('#filterbar').innerHTML = html;
+  attachFilterBarListeners();
 }
 
-function renderMultiFilter(key, label, allOptions, selected) {
-  const expanded = state.expanded[key], search = state.filters.searches[key] || '';
+function renderFilterDropdown(key, label, allOptions, selected) {
+  const open = state.openFilter === key, search = state.filters.searches[key] || '';
   const q = search.toLowerCase().trim();
   const visible = q ? allOptions.filter(o => o.toLowerCase().includes(q) || selected.has(o)) : allOptions;
   const n = selected.size, total = allOptions.length;
-  const badge = n === total && total > 0 ? `All ${total}` : `${n}/${total}`;
+  const txt = total > 0 && n === total ? 'All' : n === 0 ? 'None' : `${n} selected`;
   const listHtml = visible.length === 0
     ? '<div style="padding:8px;color:#888;font-size:0.82rem;">No matches</div>'
     : visible.map(o => `<label><input type="checkbox" data-filter="${key}" value="${esc(o)}" ${selected.has(o)?'checked':''}><span>${esc(o)}</span></label>`).join('');
-  return `<div class="filter-group">
-    <div class="filter-header" data-toggle="${key}"><span>${esc(label)}</span><span class="count-badge">${badge}</span></div>
-    ${expanded ? `<div class="filter-body">
-      <input type="text" class="search" placeholder="Search ${label.toLowerCase()}..." data-search="${key}" value="${esc(search)}">
-      <div class="filter-actions">
-        <button data-action="all" data-filter-key="${key}">All</button>
-        <button data-action="none" data-filter-key="${key}">None</button>
-      </div>
-      <div class="filter-list">${listHtml}</div>
-    </div>` : ''}
+  return `<div class="fb-field">
+    <label>${esc(label)}</label>
+    <div class="fb-dd ${open?'open':''}">
+      <button class="fb-dd-btn" data-ddbtn="${key}"><span>${txt}</span><span class="badge">${n}/${total}</span><span class="caret">▾</span></button>
+      ${open ? `<div class="fb-panel">
+        <input type="text" class="search" placeholder="Search ${label.toLowerCase()}..." data-search="${key}" value="${esc(search)}">
+        <div class="filter-actions">
+          <button data-action="all" data-filter-key="${key}">Select All</button>
+          <button data-action="none" data-filter-key="${key}">Clear</button>
+        </div>
+        <div class="filter-list">${listHtml}</div>
+      </div>` : ''}
+    </div>
   </div>`;
 }
 
-const SET_KEY = { wh: 'warehouses', item: 'items', ch: 'channels', cust: 'customers' };
-
-function attachSidebarListeners() {
-  document.querySelectorAll('[data-toggle]').forEach(el => {
-    el.onclick = () => { const k = el.dataset.toggle; state.expanded[k] = !state.expanded[k]; renderSidebar(); };
+function attachFilterBarListeners() {
+  document.querySelectorAll('[data-ddbtn]').forEach(el => {
+    el.onclick = () => { const k = el.dataset.ddbtn; state.openFilter = state.openFilter === k ? null : k; renderFilterBar(); };
   });
   document.querySelectorAll('[data-preset]').forEach(el => {
     el.onclick = () => applyDatePreset(el.dataset.preset);
@@ -648,7 +701,7 @@ function attachSidebarListeners() {
   document.querySelectorAll('[data-search]').forEach(el => {
     el.oninput = () => {
       state.filters.searches[el.dataset.search] = el.value;
-      renderSidebar();
+      renderFilterBar();
       setTimeout(() => { const n = document.querySelector(`[data-search="${el.dataset.search}"]`); if (n) { n.focus(); n.setSelectionRange(el.value.length, el.value.length); } }, 0);
     };
   });
@@ -675,9 +728,18 @@ function attachSidebarListeners() {
     state.filters.endDate = state.filters.maxDate;
     state.filters.datePreset = 'all';
     state.filters.searches = { wh: '', item: '', ch: '', cust: '' };
+    state.openFilter = null;
     render();
   };
 }
+
+// Close any open filter dropdown when clicking outside it
+document.addEventListener('click', (e) => {
+  if (state.openFilter && !(e.target.closest && e.target.closest('.fb-dd'))) {
+    state.openFilter = null;
+    renderFilterBar();
+  }
+});
 
 function applyDatePreset(preset) {
   const f = state.filters, min = f.minDate, max = f.maxDate;
@@ -697,8 +759,8 @@ function applyDatePreset(preset) {
 }
 
 function renderMain() {
-  const tabs = [['dispatch','DISPATCH TAT'],['delivery','DELIVERY TAT'],['mtd-wh','MTD DISPATCH'],['mtd-ch','MTD SALES CHANNEL'],['mtd-inv','MTD SALE INVOICE'],['viz','VISUALISATION']];
-  $('#main').innerHTML = `<nav class="parent-tabs">${tabs.map(([k,l]) => `<button data-tab="${k}" class="${state.activeTab===k?'active':''}">${l}</button>`).join('')}</nav>
+  const tabs = [['dispatch','📦','DISPATCH TAT'],['delivery','🚚','DELIVERY TAT'],['mtd-wh','🏭','MTD DISPATCH'],['mtd-ch','🛒','MTD SALES CHANNEL'],['mtd-inv','🧾','MTD SALE INVOICE'],['viz','📊','VISUALISATION']];
+  $('#main').innerHTML = `<nav class="parent-tabs">${tabs.map(([k,ic,l]) => `<button data-tab="${k}" class="${state.activeTab===k?'active':''}"><span class="tab-ic">${ic}</span>${l}</button>`).join('')}</nav>
     <div id="tab-content"></div>
     <div class="export-row"><button class="btn-export" id="btn-export">Download All Pivots (Excel)</button></div>`;
   document.querySelectorAll('[data-tab]').forEach(el => { el.onclick = () => { state.activeTab = el.dataset.tab; renderMain(); }; });
@@ -735,10 +797,10 @@ function renderTat(fdf, tatKey, label, cats, colors, pfx) {
   const totalLabel = useWeight ? 'Total Stock Qty (Kg)' : 'Total Lines';
   const fmt = useWeight ? formatIndian : (n => n.toLocaleString());
   let kpiHtml = `<div class="kpi-row">
-    <div class="kpi-card"><div class="label">${totalLabel}</div><div class="value">${fmt(totalQty)}</div></div>
+    ${kpiCard(totalLabel, fmt(totalQty), '#2563eb')}
     ${cats.map(c => {
       const v = tc[c]||0, pct = validTotal > 0 ? Math.round(v/validTotal*100) : 0;
-      return `<div class="kpi-card" style="border-left-color:${colors[c]}"><div class="label">${esc(c)}</div><div class="value">${fmt(v)} (${pct}%)</div></div>`;
+      return kpiCard(esc(c), `${fmt(v)} <span style="font-size:1.05rem;">(${pct}%)</span>`, colors[c]);
     }).join('')}</div>`;
 
   const subs = [['date','Invoice Date'],['item','MIS Item Group'],['channel','Sales Channel'],['warehouse','From Warehouse']];
@@ -780,13 +842,17 @@ function renderMtdWh(fdf) {
   if (!hasStockQty()) { $('#tab-content').innerHTML = '<div class="warning">Column "Stock Qty In Kg" not found.</div>'; return; }
   const pivot = buildSumSingle(fdf, 'From Warehouse', 'Stock Qty In Kg');
   let html = `<div class="kpi-row">
-    <div class="kpi-card"><div class="label">Total Stock Qty (Kg)</div><div class="value">${formatIndian(pivot.total)}</div></div>
-    <div class="kpi-card"><div class="label">Warehouses</div><div class="value">${pivot.rows.length}</div></div></div>
+    ${kpiCard('Total Stock Qty (Kg)', formatIndian(pivot.total), '#2563eb')}
+    ${kpiCard('Warehouses', pivot.rows.length, '#7c3aed')}</div>
     <div class="section">
     <div class="section-header"><h3>Stock Quantity by Warehouse</h3><button class="expand-btn">⛶ Expand for screenshot</button></div>
     <div class="table-wrap"><table class="pivot">
       <thead><tr><th>From Warehouse</th><th>Stock Qty In Kg</th></tr></thead>
-      <tbody>${pivot.rows.map(r => `<tr><th>${esc(shortenWh(r.key))}</th><td>${formatIndian(r.value)}</td></tr>`).join('')}
+      <tbody>${(() => {
+        const vals = pivot.rows.map(r => r.value);
+        const min = Math.min(...vals), max = Math.max(...vals);
+        return pivot.rows.map(r => `<tr><th>${esc(shortenWh(r.key))}</th><td style="${heatStyle(r.value, min, max)}">${formatIndian(r.value)}</td></tr>`).join('');
+      })()}
         <tr class="grand-total"><th>Grand Total</th><td>${formatIndian(pivot.total)}</td></tr></tbody></table></div>
     </div>`;
   $('#tab-content').innerHTML = html;
@@ -796,15 +862,29 @@ function renderMtdCross(fdf, rowKey, label) {
   if (!hasStockQty()) { $('#tab-content').innerHTML = '<div class="warning">Column "Stock Qty In Kg" not found.</div>'; return; }
   const pivot = buildSumCross(fdf, rowKey, 'From Warehouse', 'Stock Qty In Kg');
   let html = `<div class="kpi-row">
-    <div class="kpi-card"><div class="label">Total Stock Qty (Kg)</div><div class="value">${formatIndian(pivot.grandTotal.values['Grand Total'])}</div></div>
-    <div class="kpi-card"><div class="label">${esc(label)}s</div><div class="value">${pivot.rows.length}</div></div>
-    <div class="kpi-card"><div class="label">Warehouses</div><div class="value">${pivot.cols.length - 1}</div></div></div>
+    ${kpiCard('Total Stock Qty (Kg)', formatIndian(pivot.grandTotal.values['Grand Total']), '#2563eb')}
+    ${kpiCard(esc(label) + 's', pivot.rows.length, '#7c3aed')}
+    ${kpiCard('Warehouses', pivot.cols.length - 1, '#0d9488')}</div>
     <div class="section">
     <div class="section-header"><h3>Stock Quantity by ${esc(label)} × Warehouse</h3><button class="expand-btn">⛶ Expand for screenshot</button></div>
     <div class="table-wrap"><table class="pivot">
       <thead><tr><th>${esc(label)}</th>${pivot.cols.map(c => `<th>${esc(c==='Grand Total' ? c : shortenWh(c))}</th>`).join('')}</tr></thead>
-      <tbody>${pivot.rows.map(r => `<tr><th>${esc(r.key)}</th>${pivot.cols.map(c => `<td class="${c==='Grand Total'?'gt-col':''}">${formatIndian(r.values[c])}</td>`).join('')}</tr>`).join('')}
-        <tr class="grand-total"><th>Grand Total</th>${pivot.cols.map(c => `<td>${formatIndian(pivot.grandTotal.values[c])}</td>`).join('')}</tr></tbody></table></div></div>`;
+      <tbody>${pivot.rows.map(r => {
+        // Row-wise heat: highest warehouse qty in this row = green, lowest = red (Grand Total column excluded)
+        const vals = pivot.cols.filter(c => c !== 'Grand Total').map(c => r.values[c]);
+        const min = Math.min(...vals), max = Math.max(...vals);
+        return `<tr><th>${esc(r.key)}</th>${pivot.cols.map(c => c==='Grand Total'
+          ? `<td class="gt-col">${formatIndian(r.values[c])}</td>`
+          : `<td style="${heatStyle(r.values[c], min, max)}">${formatIndian(r.values[c])}</td>`).join('')}</tr>`;
+      }).join('')}
+        <tr class="grand-total"><th>Grand Total</th>${(() => {
+          const g = pivot.grandTotal.values;
+          const vals = pivot.cols.filter(c => c !== 'Grand Total').map(c => g[c]);
+          const min = Math.min(...vals), max = Math.max(...vals);
+          return pivot.cols.map(c => c==='Grand Total'
+            ? `<td>${formatIndian(g[c])}</td>`
+            : `<td style="${heatStyle(g[c], min, max)}">${formatIndian(g[c])}</td>`).join('');
+        })()}</tr></tbody></table></div></div>`;
   $('#tab-content').innerHTML = html;
 }
 
@@ -882,12 +962,17 @@ function attachVizListeners() {
   });
 }
 
+// Row-wise heat colouring: within each row the highest % is greenest, the lowest reddest
 function renderPctTable(pivot) {
-  const cls = (v) => v >= 50 ? 'pct-hi' : v >= 30 ? 'pct-mid' : 'pct-low';
+  const heatRow = (pcts) => {
+    const vals = pivot.categories.map(c => pcts[c]);
+    const min = Math.min(...vals), max = Math.max(...vals);
+    return pivot.categories.map(c => `<td style="${heatStyle(pcts[c], min, max)}">${pcts[c]}%</td>`).join('');
+  };
   return `<div class="table-wrap"><table class="pivot">
     <thead><tr><th></th>${pivot.categories.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead>
-    <tbody>${pivot.rows.map(r => `<tr><th>${esc(r.key)}</th>${pivot.categories.map(c => `<td class="${cls(r.pct[c])}">${r.pct[c]}%</td>`).join('')}</tr>`).join('')}
-      <tr class="grand-total"><th>Grand Total</th>${pivot.categories.map(c => `<td>${pivot.grandTotal.pct[c]}%</td>`).join('')}</tr></tbody></table></div>`;
+    <tbody>${pivot.rows.map(r => `<tr><th>${esc(r.key)}</th>${heatRow(r.pct)}</tr>`).join('')}
+      <tr class="grand-total"><th>Grand Total</th>${heatRow(pivot.grandTotal.pct)}</tr></tbody></table></div>`;
 }
 
 function renderStackedChart(id, pivot, cats, colors, title) {
