@@ -400,7 +400,17 @@ function heatStyle(v, min, max) {
   if (!(max > min)) return '';
   const t = Math.max(0, Math.min(1, (v - min) / (max - min)));
   const hue = Math.round(t * 120);
-  return `background-color:hsl(${hue},72%,${Math.round(86 - t * 5)}%);`;
+  return `background-color:hsl(${hue},85%,${Math.round(83 - t * 11)}%);`;
+}
+
+// Bucket-semantic colouring for TAT % tables: each column keeps a fixed hue
+// (0-2/0-9 Days = green, 3-5/10-12 Days = yellow, >5/>12 Days = red,
+// Delivery Pending = grey) and the colour deepens as the % grows.
+const CAT_HUE = { '0-2 Days': 127, '3-5 Days': 46, '>5 Days': 0, '0-9 Days': 127, '10-12 Days': 46, '> 12 Days': 0 };
+function bucketStyle(pct, cat) {
+  const t = Math.max(0, Math.min(1, pct / 100));
+  if (!(cat in CAT_HUE)) return `background-color:hsl(220,12%,${Math.round(95 - t * 25)}%);`;
+  return `background-color:hsl(${CAT_HUE[cat]},90%,${Math.round(93 - t * 34)}%);`;
 }
 
 // Darken a #rrggbb colour for readable text on its own light tint
@@ -962,13 +972,10 @@ function attachVizListeners() {
   });
 }
 
-// Row-wise heat colouring: within each row the highest % is greenest, the lowest reddest
+// Bucket-semantic colouring: green column stays green, yellow stays yellow,
+// red stays red - the higher the %, the deeper the colour
 function renderPctTable(pivot) {
-  const heatRow = (pcts) => {
-    const vals = pivot.categories.map(c => pcts[c]);
-    const min = Math.min(...vals), max = Math.max(...vals);
-    return pivot.categories.map(c => `<td style="${heatStyle(pcts[c], min, max)}">${pcts[c]}%</td>`).join('');
-  };
+  const heatRow = (pcts) => pivot.categories.map(c => `<td style="${bucketStyle(pcts[c], c)}">${pcts[c]}%</td>`).join('');
   return `<div class="table-wrap"><table class="pivot">
     <thead><tr><th></th>${pivot.categories.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead>
     <tbody>${pivot.rows.map(r => `<tr><th>${esc(r.key)}</th>${heatRow(r.pct)}</tr>`).join('')}
