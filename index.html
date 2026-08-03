@@ -364,6 +364,7 @@ const state = {
     searches: { wh: '', item: '', ch: '', cust: '' },
   },
   options: { warehouses: [], items: [], channels: [], customers: [] },
+  monthLabels: {},               // '2026-07' -> 'Jul 2026', built in preprocess()
   activeTab: 'dispatch',
   activeSubTab: { dispatch: 'date', delivery: 'date' },
   openFilter: null,              // which filter dropdown is open: 'wh' | 'item' | 'ch' | 'cust' | null
@@ -371,6 +372,7 @@ const state = {
   charts: {},
   vizMode: 'dispatch',           // 'dispatch' | 'delivery' | 'mtd'
   vizSubTab: { dispatch: 'date', delivery: 'date' },
+  momSubTab: 'dispatch',         // 'dispatch' | 'delivery' | 'stock'
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -474,9 +476,15 @@ async function handleFile(file) {
 }
 
 function preprocess() {
+  state.monthLabels = {};
   for (const r of state.rows) {
     r._date = parseExcelDate(r['Invoice Date']);
-    if (r._date) r._dateStr = formatDate(r._date);
+    if (r._date) {
+      r._dateStr = formatDate(r._date);
+      r._monthKey = `${r._date.getFullYear()}-${String(r._date.getMonth() + 1).padStart(2, '0')}`;
+      r._monthLabel = r._date.toLocaleString('en-US', { month: 'short', year: 'numeric' });
+      state.monthLabels[r._monthKey] = r._monthLabel;
+    }
 
     // Effective pickup date: fall back to Invoice Date when Pickedup_Date is empty
     const pickup = parseExcelDate(r['Pickedup_Date']) || r._date;
@@ -511,10 +519,18 @@ function preprocess() {
       else r['Delivery TAT'] = 'Delivery Pending';
     }
   }
-  const dates = state.rows.filter(r => r._date).map(r => r._date.getTime());
-  if (dates.length) {
-    state.filters.minDate = new Date(Math.min(...dates));
-    state.filters.maxDate = new Date(Math.max(...dates));
+  // Manual min/max loop instead of Math.min(...dates): spreading 100k+ elements
+  // as function arguments overflows the call stack on large uploads.
+  let minT = null, maxT = null;
+  for (const r of state.rows) {
+    if (!r._date) continue;
+    const t = r._date.getTime();
+    if (minT === null || t < minT) minT = t;
+    if (maxT === null || t > maxT) maxT = t;
+  }
+  if (minT !== null) {
+    state.filters.minDate = new Date(minT);
+    state.filters.maxDate = new Date(maxT);
     state.filters.startDate = state.filters.minDate;
     state.filters.endDate = state.filters.maxDate;
   }
@@ -769,7 +785,7 @@ function applyDatePreset(preset) {
 }
 
 function renderMain() {
-  const tabs = [['dispatch','📦','DISPATCH TAT'],['delivery','🚚','DELIVERY TAT'],['mtd-wh','🏭','MTD DISPATCH'],['mtd-ch','🛒','MTD SALES CHANNEL'],['mtd-inv','🧾','MTD SALE INVOICE'],['viz','📊','VISUALISATION']];
+  const tabs = [['dispatch','📦','DISPATCH TAT'],['delivery','🚚','DELIVERY TAT'],['mtd-wh','🏭','MTD DISPATCH'],['mtd-ch','🛒','MTD SALES CHANNEL'],['mtd-inv','🧾','MTD SALE INVOICE'],['mom','📅','MONTH ON MONTH'],['viz','📊','VISUALISATION']];
   $('#main').innerHTML = `<nav class="parent-tabs">${tabs.map(([k,ic,l]) => `<button data-tab="${k}" class="${state.activeTab===k?'active':''}"><span class="tab-ic">${ic}</span>${l}</button>`).join('')}</nav>
     <div id="tab-content"></div>
     <div class="export-row"><button class="btn-export" id="btn-export">Download All Pivots (Excel)</button></div>`;
@@ -788,6 +804,7 @@ function renderTabContent() {
   else if (state.activeTab === 'mtd-wh') renderMtdWh(fdf);
   else if (state.activeTab === 'mtd-ch') renderMtdCross(fdf, 'Sales_Channel', 'Sales Channel');
   else if (state.activeTab === 'mtd-inv') renderMtdCross(fdf, '_dateStr', 'Invoice Date');
+  else if (state.activeTab === 'mom') renderMoM(fdf);
   else if (state.activeTab === 'viz') renderVisualisation(fdf);
 }
 
@@ -899,6 +916,103 @@ function renderMtdCross(fdf, rowKey, label) {
 }
 
 function hasStockQty() { return state.rows.length > 0 && 'Stock Qty In Kg' in state.rows[0]; }
+
+function monthLabelOf(key) { return state.monthLabels[key] || key; }
+
+// Swap a pivot's row keys for display labels (e.g. '2026-07' -> 'Jul 2026')
+// while keeping chronological ordering already applied by the builder.
+function relabelPivotRows(pivot, labelFn) {
+  return { categories: pivot.categories, rows: pivot.rows.map(r => ({ ...r, key: labelFn(r.key) })), grandTotal: pivot.grandTotal };
+}
+
+// Chronological month-over-month totals + % change vs the previous month
+function buildMonthlyTotals(data, valueKey) {
+  const sums = {};
+  for (const r of data) {
+    if (!r._monthKey) continue;
+    sums[r._monthKey] = (sums[r._monthKey] || 0) + (Number(r[valueKey]) || 0);
+  }
+  const keys = Object.keys(sums).sort();
+  const rows = keys.map((key, i) => {
+    const value = sums[key];
+    const prev = i > 0 ? sums[keys[i - 1]] : null;
+    const deltaPct = (prev != null && prev !== 0) ? (value - prev) / prev * 100 : null;
+    return { key, label: monthLabelOf(key), value, deltaPct };
+  });
+  const total = rows.reduce((s, r) => s + r.value, 0);
+  return { rows, total };
+}
+
+function momDeltaBadge(delta) {
+  if (delta == null) return '<span style="color:#94a3b8;">—</span>';
+  const up = delta >= 0;
+  const color = up ? '#15803d' : '#b91c1c', bg = up ? '#dcfce7' : '#fee2e2', arrow = up ? '▲' : '▼';
+  return `<span style="display:inline-block;padding:3px 11px;border-radius:20px;background:${bg};color:${color};font-weight:800;font-size:0.85em;">${arrow} ${Math.abs(Math.round(delta))}%</span>`;
+}
+
+// MONTH ON MONTH tab: Dispatch TAT / Delivery TAT trend across months, plus
+// Stock Qty MTD with a period-over-period % change indicator
+function renderMoM(fdf) {
+  const subs = [['dispatch','Dispatch TAT'],['delivery','Delivery TAT'],['stock','Stock Qty (MTD)']];
+  const sub = state.momSubTab || 'dispatch';
+  let html = `<nav class="sub-tabs">${subs.map(([k,l]) => `<button data-momsubtab="${k}" class="${sub===k?'active':''}">${esc(l)}</button>`).join('')}</nav>`;
+
+  if (sub === 'stock') {
+    if (!hasStockQty()) {
+      html += '<div class="warning">Column "Stock Qty In Kg" not found.</div>';
+      $('#tab-content').innerHTML = html;
+      attachMoMListeners();
+      return;
+    }
+    const mt = buildMonthlyTotals(fdf, 'Stock Qty In Kg');
+    const latest = mt.rows.length ? mt.rows[mt.rows.length - 1] : null;
+    html += `<div class="kpi-row">
+      ${kpiCard('Total Stock Qty (Kg)', formatIndian(mt.total), '#2563eb')}
+      ${kpiCard('Months Compared', mt.rows.length, '#7c3aed')}
+      ${latest && latest.deltaPct != null ? kpiCard('Latest MoM Change', (latest.deltaPct>=0?'+':'-') + Math.abs(Math.round(latest.deltaPct)) + '%', latest.deltaPct >= 0 ? '#16a34a' : '#dc2626') : ''}
+    </div>`;
+    html += `<div class="section" id="mom-chart-section">
+      <div class="section-header"><h3>Stock Quantity — Month on Month</h3><button class="expand-btn" data-target="mom-chart-card">⛶ Expand for screenshot</button></div>
+      <div class="chart-wrap" id="mom-chart-card" style="height:380px;"><canvas id="chart-mom"></canvas></div>
+    </div>`;
+    html += `<div class="section">
+      <div class="section-header"><h3>Month on Month Comparison</h3><button class="expand-btn">⛶ Expand for screenshot</button></div>
+      <div class="table-wrap"><table class="pivot">
+        <thead><tr><th>Month</th><th>Stock Qty In Kg</th><th>MoM Change</th></tr></thead>
+        <tbody>${mt.rows.map(r => `<tr><th>${esc(r.label)}</th><td>${formatIndian(r.value)}</td><td>${momDeltaBadge(r.deltaPct)}</td></tr>`).join('')}
+          <tr class="grand-total"><th>Grand Total</th><td>${formatIndian(mt.total)}</td><td>—</td></tr></tbody></table></div>
+    </div>`;
+    $('#tab-content').innerHTML = html;
+    attachMoMListeners();
+    renderBarChart('chart-mom', mt.rows.map(r => r.label), mt.rows.map(r => r.value), 'Stock Qty', '#2563eb', 'Stock Quantity by Month');
+    return;
+  }
+
+  const tatKey  = sub === 'dispatch' ? 'Dis TAT'      : 'Delivery TAT';
+  const label   = sub === 'dispatch' ? 'Dispatch TAT' : 'Delivery TAT';
+  const cats    = sub === 'dispatch' ? DISPATCH_CATS  : DELIVERY_CATS;
+  const colors  = sub === 'dispatch' ? DISPATCH_COLORS : DELIVERY_COLORS;
+  const pivot   = relabelPivotRows(buildPctPivot(fdf, '_monthKey', tatKey, cats), monthLabelOf);
+
+  html += `<div class="section" id="mom-chart-section">
+    <div class="section-header"><h3>${esc(label)} — Month on Month Trend</h3><button class="expand-btn" data-target="mom-chart-card">⛶ Expand for screenshot</button></div>
+    <div class="chart-wrap" id="mom-chart-card" style="height:400px;"><canvas id="chart-mom"></canvas></div>
+  </div>`;
+  html += `<div class="section">
+    <div class="section-header"><h3>${esc(label)} by Month</h3><button class="expand-btn">⛶ Expand for screenshot</button></div>
+    ${renderPctTable(pivot)}
+  </div>`;
+
+  $('#tab-content').innerHTML = html;
+  attachMoMListeners();
+  renderStackedChart('chart-mom', pivot, cats, colors, `${label} - Month on Month`);
+}
+
+function attachMoMListeners() {
+  document.querySelectorAll('[data-momsubtab]').forEach(el => {
+    el.onclick = () => { state.momSubTab = el.dataset.momsubtab; renderTabContent(); };
+  });
+}
 
 // VISUALISATION tab - houses all charts that were previously inline in each tab
 function renderVisualisation(fdf) {
