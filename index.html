@@ -372,7 +372,10 @@ const state = {
   charts: {},
   vizMode: 'dispatch',           // 'dispatch' | 'delivery' | 'mtd'
   vizSubTab: { dispatch: 'date', delivery: 'date' },
-  momSubTab: 'dispatch',         // 'dispatch' | 'delivery' | 'stock'
+  momSubTab: 'dispatch',         // 'dispatch' | 'delivery' | 'stock' | 'chcust'
+  momWh: new Set(),              // local From Warehouse filter for the Channel & Customer MoM tables
+  momWhOpen: false,
+  momWhSearch: '',
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -567,6 +570,7 @@ function initFilters() {
   state.filters.channels = new Set(state.options.channels);
   recomputeCustomers();
   state.filters.customers = new Set(state.options.customers);
+  state.momWh = new Set(state.options.warehouses);
 }
 
 function getFiltered() {
@@ -950,12 +954,171 @@ function momDeltaBadge(delta) {
   return `<span style="display:inline-block;padding:3px 11px;border-radius:20px;background:${bg};color:${color};font-weight:800;font-size:0.85em;">${arrow} ${Math.abs(Math.round(delta))}%</span>`;
 }
 
+// 'YYYY-MM' -> 'Jul-26' (MMM-YY), used for the month columns in the
+// Channel/Customer x Month cross-tabs below
+function monthShortLabelOf(key) {
+  if (key === 'Grand Total') return key;
+  const [y, m] = key.split('-');
+  const d = new Date(Number(y), Number(m) - 1, 1);
+  return d.toLocaleString('en-US', { month: 'short' }) + '-' + y.slice(2);
+}
+
+// Cross-tab of rowKey x month (chronological, not magnitude-sorted like
+// buildSumCross - '_monthKey' is 'YYYY-MM' so a plain sort is chronological)
+function buildMonthCrossTab(data, rowKey, valueKey) {
+  const matrix = {}, monthSet = new Set();
+  for (const r of data) {
+    if (!r._monthKey) continue;
+    const row = String(r[rowKey] ?? '(blank)');
+    if (!matrix[row]) matrix[row] = {};
+    matrix[row][r._monthKey] = (matrix[row][r._monthKey] || 0) + (Number(r[valueKey]) || 0);
+    monthSet.add(r._monthKey);
+  }
+  const months = [...monthSet].sort();
+  const colTotals = {};
+  for (const m of months) colTotals[m] = Object.values(matrix).reduce((s, row) => s + (row[m] || 0), 0);
+  const rowKeys = Object.keys(matrix).sort((a, b) => {
+    const totalA = months.reduce((s, m) => s + (matrix[a][m] || 0), 0);
+    const totalB = months.reduce((s, m) => s + (matrix[b][m] || 0), 0);
+    return totalB - totalA;
+  });
+  const rows = rowKeys.map(rk => {
+    const values = {}; let rowTotal = 0;
+    for (const m of months) { values[m] = matrix[rk][m] || 0; rowTotal += values[m]; }
+    values['Grand Total'] = rowTotal;
+    return { key: rk, values };
+  });
+  const gtValues = {}; let grandTotal = 0;
+  for (const m of months) { gtValues[m] = colTotals[m]; grandTotal += colTotals[m]; }
+  gtValues['Grand Total'] = grandTotal;
+  return { cols: [...months, 'Grand Total'], rows, grandTotal: { key: 'Grand Total', values: gtValues } };
+}
+
+// Renders a rowKey x month pivot table with the same row-wise heat colouring
+// used by the other MTD cross-tabs (renderMtdCross)
+function renderMonthCrossTable(pivot, rowLabel) {
+  return `<div class="table-wrap"><table class="pivot">
+    <thead><tr><th>${esc(rowLabel)}</th>${pivot.cols.map(c => `<th>${c==='Grand Total' ? c : esc(monthShortLabelOf(c))}</th>`).join('')}</tr></thead>
+    <tbody>${pivot.rows.map(r => {
+      const vals = pivot.cols.filter(c => c !== 'Grand Total').map(c => r.values[c]);
+      const min = Math.min(...vals), max = Math.max(...vals);
+      return `<tr><th>${esc(r.key)}</th>${pivot.cols.map(c => c==='Grand Total'
+        ? `<td class="gt-col">${formatIndian(r.values[c])}</td>`
+        : `<td style="${heatStyle(r.values[c], min, max)}">${formatIndian(r.values[c])}</td>`).join('')}</tr>`;
+    }).join('')}
+      <tr class="grand-total"><th>Grand Total</th>${(() => {
+        const g = pivot.grandTotal.values;
+        const vals = pivot.cols.filter(c => c !== 'Grand Total').map(c => g[c]);
+        const min = Math.min(...vals), max = Math.max(...vals);
+        return pivot.cols.map(c => c==='Grand Total'
+          ? `<td>${formatIndian(g[c])}</td>`
+          : `<td style="${heatStyle(g[c], min, max)}">${formatIndian(g[c])}</td>`).join('');
+      })()}</tr></tbody></table></div>`;
+}
+
+// Local "From Warehouse" filter scoped only to the Channel & Customer MoM
+// tables - independent of the global filter bar's Warehouse filter
+function renderMomWhFilter() {
+  const open = state.momWhOpen, search = state.momWhSearch || '';
+  const allOptions = state.options.warehouses, selected = state.momWh;
+  const q = search.toLowerCase().trim();
+  const visible = q ? allOptions.filter(o => o.toLowerCase().includes(q) || selected.has(o)) : allOptions;
+  const n = selected.size, total = allOptions.length;
+  const txt = total > 0 && n === total ? 'All' : n === 0 ? 'None' : `${n} selected`;
+  const listHtml = visible.length === 0
+    ? '<div style="padding:8px;color:#888;font-size:0.82rem;">No matches</div>'
+    : visible.map(o => `<label><input type="checkbox" data-momwhfilter value="${esc(o)}" ${selected.has(o)?'checked':''}><span>${esc(shortenWh(o))}</span></label>`).join('');
+  return `<div class="fb-field" style="margin-bottom:16px;">
+    <label>From Warehouse</label>
+    <div class="fb-dd ${open?'open':''}" id="mom-wh-dd" style="min-width:230px;">
+      <button class="fb-dd-btn" data-momwhbtn><span>${txt}</span><span class="badge">${n}/${total}</span><span class="caret">▾</span></button>
+      ${open ? `<div class="fb-panel">
+        <input type="text" class="search" placeholder="Search warehouse..." data-momwhsearch value="${esc(search)}">
+        <div class="filter-actions">
+          <button data-momwhaction="all">Select All</button>
+          <button data-momwhaction="none">Clear</button>
+        </div>
+        <div class="filter-list">${listHtml}</div>
+      </div>` : ''}
+    </div>
+  </div>`;
+}
+
+function attachMomWhListeners() {
+  const btn = document.querySelector('[data-momwhbtn]');
+  if (btn) btn.onclick = () => { state.momWhOpen = !state.momWhOpen; renderTabContent(); };
+  document.querySelectorAll('[data-momwhaction]').forEach(el => {
+    el.onclick = () => {
+      state.momWh = el.dataset.momwhaction === 'all' ? new Set(state.options.warehouses) : new Set();
+      renderTabContent();
+    };
+  });
+  document.querySelectorAll('input[data-momwhfilter]').forEach(el => {
+    el.onchange = () => {
+      if (el.checked) state.momWh.add(el.value); else state.momWh.delete(el.value);
+      renderTabContent();
+    };
+  });
+  const s = document.querySelector('[data-momwhsearch]');
+  if (s) s.oninput = () => {
+    state.momWhSearch = s.value;
+    renderTabContent();
+    setTimeout(() => { const n = document.querySelector('[data-momwhsearch]'); if (n) { n.focus(); n.setSelectionRange(s.value.length, s.value.length); } }, 0);
+  };
+}
+
+// Close the local warehouse dropdown when clicking outside it - kept separate
+// from the global filter bar's outside-click handler (different state flag)
+document.addEventListener('click', (e) => {
+  if (state.momWhOpen && !(e.target.closest && e.target.closest('#mom-wh-dd'))) {
+    state.momWhOpen = false;
+    if (state.activeTab === 'mom' && state.momSubTab === 'chcust') renderTabContent();
+  }
+});
+
 // MONTH ON MONTH tab: Dispatch TAT / Delivery TAT trend across months, plus
 // Stock Qty MTD with a period-over-period % change indicator
 function renderMoM(fdf) {
-  const subs = [['dispatch','Dispatch TAT'],['delivery','Delivery TAT'],['stock','Stock Qty (MTD)']];
+  const subs = [['dispatch','Dispatch TAT'],['delivery','Delivery TAT'],['stock','Stock Qty (MTD)'],['chcust','Channel & Customer']];
   const sub = state.momSubTab || 'dispatch';
   let html = `<nav class="sub-tabs">${subs.map(([k,l]) => `<button data-momsubtab="${k}" class="${sub===k?'active':''}">${esc(l)}</button>`).join('')}</nav>`;
+
+  if (sub === 'chcust') {
+    if (!hasStockQty()) {
+      html += '<div class="warning">Column "Stock Qty In Kg" not found.</div>';
+      $('#tab-content').innerHTML = html;
+      attachMoMListeners();
+      return;
+    }
+    html += renderMomWhFilter();
+    const localFdf = fdf.filter(r => state.momWh.has(String(r['From Warehouse'])));
+    if (localFdf.length === 0) {
+      html += '<div class="warning">No data matches the selected warehouse filter.</div>';
+      $('#tab-content').innerHTML = html;
+      attachMoMListeners();
+      attachMomWhListeners();
+      return;
+    }
+    const chPivot = buildMonthCrossTab(localFdf, 'Sales_Channel', 'Stock Qty In Kg');
+    const custPivot = buildMonthCrossTab(localFdf, 'Customer', 'Stock Qty In Kg');
+    html += `<div class="kpi-row">
+      ${kpiCard('Total Stock Qty (Kg)', formatIndian(localFdf.reduce((s, r) => s + (Number(r['Stock Qty In Kg']) || 0), 0)), '#2563eb')}
+      ${kpiCard('Sales Channels', chPivot.rows.length, '#7c3aed')}
+      ${kpiCard('Customers', custPivot.rows.length, '#0d9488')}
+    </div>`;
+    html += `<div class="section">
+      <div class="section-header"><h3>Sales Channel — Month on Month (Stock Qty In Kg)</h3><button class="expand-btn">⛶ Expand for screenshot</button></div>
+      ${renderMonthCrossTable(chPivot, 'Sales Channel')}
+    </div>`;
+    html += `<div class="section">
+      <div class="section-header"><h3>Customer — Month on Month (Stock Qty In Kg)</h3><button class="expand-btn">⛶ Expand for screenshot</button></div>
+      ${renderMonthCrossTable(custPivot, 'Customer')}
+    </div>`;
+    $('#tab-content').innerHTML = html;
+    attachMoMListeners();
+    attachMomWhListeners();
+    return;
+  }
 
   if (sub === 'stock') {
     if (!hasStockQty()) {
