@@ -284,6 +284,11 @@ table.pivot tbody td.gt-col { background: #eff6ff; font-weight: 800; }
 .btn-export:disabled { opacity: 0.6; cursor: wait; }
 
 .warning { background: #fff3cd; border: 1px solid #ffeaa7; color: #856404; padding: 12px 16px; border-radius: 6px; margin-bottom: 16px; }
+
+.cond-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.cond-list li { background: white; border: 1px solid #e8eef5; border-radius: 8px; padding: 12px 16px; font-size: 0.92rem; color: #1e293b; line-height: 1.55; }
+.cond-list b { color: #0a2647; }
+.legend-swatch { display: inline-block; width: 14px; height: 14px; border-radius: 4px; margin-right: 8px; vertical-align: middle; border: 1px solid rgba(0,0,0,0.08); }
 .spinner-sm { display: inline-block; width: 16px; height: 16px; border: 2px solid #e8eef5; border-top-color: #0a2647; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 6px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -806,7 +811,7 @@ function applyDatePreset(preset) {
 }
 
 function renderMain() {
-  const tabs = [['dispatch','📦','DISPATCH TAT'],['delivery','🚚','DELIVERY TAT'],['mtd-wh','🏭','MTD DISPATCH'],['mtd-ch','🛒','MTD SALES CHANNEL'],['mtd-inv','🧾','MTD SALE INVOICE'],['mom','📅','MONTH ON MONTH'],['viz','📊','VISUALISATION']];
+  const tabs = [['dispatch','📦','DISPATCH TAT'],['delivery','🚚','DELIVERY TAT'],['mtd-wh','🏭','MTD DISPATCH'],['mtd-ch','🛒','MTD SALES CHANNEL'],['mtd-inv','🧾','MTD SALE INVOICE'],['mom','📅','MONTH ON MONTH'],['viz','📊','VISUALISATION'],['conditions','📋','CONDITIONS APPLIED']];
   $('#main').innerHTML = `<nav class="parent-tabs">${tabs.map(([k,ic,l]) => `<button data-tab="${k}" class="${state.activeTab===k?'active':''}"><span class="tab-ic">${ic}</span>${l}</button>`).join('')}</nav>
     <div id="tab-content"></div>
     <div class="export-row"><button class="btn-export" id="btn-export">Download All Pivots (Excel)</button></div>`;
@@ -817,6 +822,9 @@ function renderMain() {
 
 function renderTabContent() {
   const fdf = getFiltered();
+  // Conditions Applied should render even with 0 filtered rows - that's
+  // often exactly when a user wants to see which filter is causing it.
+  if (state.activeTab === 'conditions') { renderConditions(fdf); return; }
   if (fdf.length === 0) { $('#tab-content').innerHTML = '<div class="warning">No data matches the selected filters.</div>'; return; }
   for (const id in state.charts) { try { state.charts[id].destroy(); } catch (e) {} }
   state.charts = {};
@@ -1375,6 +1383,99 @@ function attachVizListeners() {
       renderTabContent();
     };
   });
+}
+
+// e.g. "3 of 4 selected: A, B, C" / "All 4 selected" / "None selected"
+function filterSummaryText(selected, allOptions) {
+  const n = selected.size, total = allOptions.length;
+  if (total === 0) return '—';
+  if (n === total) return `All ${total} selected`;
+  if (n === 0) return 'None selected';
+  const arr = [...selected];
+  const shown = arr.slice(0, 5).join(', ');
+  return `${n} of ${total} selected: ${shown}${arr.length > 5 ? ` +${arr.length - 5} more` : ''}`;
+}
+
+const DATE_PRESET_LABEL = { all: 'All Time', mtd: 'This Month (MTD)', '7d': 'Last 7 Days', '15d': 'Last 15 Days', '30d': 'Last 30 Days', custom: 'Custom Range' };
+
+// CONDITIONS APPLIED tab - the currently active filter selections (live),
+// plus a static reference of every calculation rule/convention used
+// elsewhere in the dashboard, so the numbers on every other tab are
+// auditable at a glance.
+function renderConditions(fdf) {
+  const f = state.filters;
+  const dateRangeText = f.startDate && f.endDate ? `${formatDate(f.startDate)} to ${formatDate(f.endDate)}` : '—';
+  const presetLabel = DATE_PRESET_LABEL[f.datePreset] || f.datePreset;
+
+  const filterRows = [
+    ['Invoice Date Range', `${dateRangeText} (${presetLabel})`],
+    ['From Warehouse', filterSummaryText(f.warehouses, state.options.warehouses)],
+    ['MIS Item Group', filterSummaryText(f.items, state.options.items)],
+    ['Sales Channel', filterSummaryText(f.channels, state.options.channels)],
+    ['Customer', filterSummaryText(f.customers, state.options.customers)],
+    ['Filtered Rows', `${fdf.length.toLocaleString()} of ${state.rows.length.toLocaleString()} total rows`],
+  ];
+
+  let html = `<div class="section">
+    <div class="section-header"><h3>Active Filters — applied to every tab right now</h3></div>
+    <div class="table-wrap"><table class="pivot">
+      <thead><tr><th>Filter</th><th>Applied Value</th></tr></thead>
+      <tbody>${filterRows.map(([k,v]) => `<tr><th>${esc(k)}</th><td style="text-align:left;font-weight:600;white-space:normal;">${esc(v)}</td></tr>`).join('')}</tbody>
+    </table></div>
+  </div>`;
+
+  html += `<div class="section">
+    <div class="section-header"><h3>Dispatch TAT — Calculation Rule</h3></div>
+    <ul class="cond-list">
+      <li><b>Dis Days</b> = Pickedup Date (falls back to Invoice Date if blank) − Sales Confirmation Date (falls back to Sales Order Date if blank)</li>
+      <li>Buckets: <b>0-2 Days</b>, <b>3-5 Days</b>, <b>&gt;5 Days</b></li>
+      <li>Negative day counts are clamped to 0</li>
+    </ul>
+  </div>`;
+
+  html += `<div class="section">
+    <div class="section-header"><h3>Delivery TAT — Calculation Rule</h3></div>
+    <ul class="cond-list">
+      <li><b>Delivery Days</b> = Delivered Date − Sales Confirmation Date (falls back to Sales Order Date if blank)</li>
+      <li>Buckets: <b>0-9 Days</b>, <b>10-12 Days</b>, <b>&gt;12 Days</b></li>
+      <li>Missing Delivered Date is treated as <b>Delivery Pending</b></li>
+      <li>Negative day counts are clamped to 0</li>
+    </ul>
+  </div>`;
+
+  html += `<div class="section">
+    <div class="section-header"><h3>Weighting &amp; Aggregation</h3></div>
+    <ul class="cond-list">
+      <li>All Dispatch/Delivery TAT % tables are weighted by <b>Stock Qty In Kg</b> (falls back to row count if that column is missing from the upload)</li>
+      <li>All MTD tables are a <b>sum of Stock Qty In Kg</b> grouped by Warehouse, Sales Channel, or Invoice Date</li>
+      <li>Percentages are rounded to the nearest whole number</li>
+      <li>Month on Month tables group rows by the calendar month of <b>Invoice Date</b></li>
+      <li>The Channel & Customer wise tabs (Dispatch TAT, Delivery TAT, Channel &amp; Customer) share one local <b>From Warehouse</b> filter, independent of the global filter above</li>
+      <li>The Dispatch/Delivery TAT (Channel &amp; Customer wise) tables show the % of ONE selected TAT bucket at a time, picked via the toggle above each table</li>
+    </ul>
+  </div>`;
+
+  html += `<div class="section">
+    <div class="section-header"><h3>Colour Legend</h3></div>
+    <ul class="cond-list">
+      <li><span class="legend-swatch" style="background:#dcfce7;"></span> Green = 0-2 Days / 0-9 Days (best)</li>
+      <li><span class="legend-swatch" style="background:#fef3c7;"></span> Yellow = 3-5 Days / 10-12 Days</li>
+      <li><span class="legend-swatch" style="background:#fee2e2;"></span> Red = &gt;5 Days / &gt;12 Days (worst)</li>
+      <li><span class="legend-swatch" style="background:#e5e7eb;"></span> Grey = Delivery Pending</li>
+      <li>Within a bucket, a darker shade means a higher percentage</li>
+      <li>In MTD cross-tab tables (Sales Channel/Invoice Date/Channel &amp; Customer × Month), colours are relative instead: green = highest value in that row, red = lowest</li>
+    </ul>
+  </div>`;
+
+  html += `<div class="section">
+    <div class="section-header"><h3>Warehouse Name Aliases (used for display only)</h3></div>
+    <div class="table-wrap"><table class="pivot">
+      <thead><tr><th>Full Name</th><th>Displayed As</th></tr></thead>
+      <tbody>${Object.entries(WAREHOUSE_ALIAS).map(([full, alias]) => `<tr><th style="text-align:left;white-space:normal;">${esc(full)}</th><td>${esc(alias)}</td></tr>`).join('')}</tbody>
+    </table></div>
+  </div>`;
+
+  $('#tab-content').innerHTML = html;
 }
 
 // Bucket-semantic colouring: green column stays green, yellow stays yellow,
