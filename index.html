@@ -373,9 +373,10 @@ const state = {
   charts: {},
   vizMode: 'dispatch',           // 'dispatch' | 'delivery' | 'mtd'
   vizSubTab: { dispatch: 'date', delivery: 'date' },
-  momSubTab: 'dispatch',         // 'dispatch' | 'delivery' | 'stock' | 'chcust'
-  momWh: new Set(),              // local From Warehouse filter for the Channel & Customer MoM tables
+  momSubTab: 'dispatchCC',       // 'dispatchCC' | 'deliveryCC' | 'dispatch' | 'delivery' | 'stock' | 'chcust'
+  momWh: new Set(),              // local From Warehouse filter shared by the "…wise" MoM tables
   momWhOpen: false,
+  momCat: { dispatchCC: DISPATCH_CATS[0], deliveryCC: DELIVERY_CATS[0] }, // selected TAT bucket toggle per Channel/Customer-wise tab
   momWhSearch: '',
 };
 
@@ -1031,6 +1032,81 @@ function renderMonthCrossTable(pivot, rowLabel) {
       })()}</tr></tbody></table></div>`;
 }
 
+// Cross-tab of rowKey x month where each cell is the % of that row's volume
+// (weighted by Stock Qty In Kg, same convention as buildPctPivot) falling
+// into ONE selected TAT bucket - used by the Dispatch/Delivery TAT
+// (Channel & Customer wise) tables, which toggle which bucket is shown.
+function buildPctCrossTab(data, rowKey, tatKey, selectedCat) {
+  const useWeight = hasStockQty();
+  const matrix = {}, monthSet = new Set();
+  for (const r of data) {
+    if (!r._monthKey) continue;
+    const t = r[tatKey];
+    if (!t || !String(t).trim()) continue; // only valid TAT rows count toward the % denominator
+    const row = String(r[rowKey] ?? '(blank)');
+    const m = r._monthKey;
+    monthSet.add(m);
+    if (!matrix[row]) matrix[row] = {};
+    if (!matrix[row][m]) matrix[row][m] = { num: 0, den: 0 };
+    const w = useWeight ? (Number(r['Stock Qty In Kg']) || 0) : 1;
+    matrix[row][m].den += w;
+    if (String(t) === selectedCat) matrix[row][m].num += w;
+  }
+  const months = [...monthSet].sort();
+  const pctOf = (num, den) => den > 0 ? Math.round(num / den * 100) : 0;
+  const rowKeys = Object.keys(matrix).sort((a, b) => {
+    const totalA = months.reduce((s, m) => s + ((matrix[a][m] && matrix[a][m].den) || 0), 0);
+    const totalB = months.reduce((s, m) => s + ((matrix[b][m] && matrix[b][m].den) || 0), 0);
+    return totalB - totalA;
+  });
+  const rows = rowKeys.map(rk => {
+    const values = {}; let rowNum = 0, rowDen = 0;
+    for (const m of months) {
+      const cell = matrix[rk][m] || { num: 0, den: 0 };
+      values[m] = pctOf(cell.num, cell.den);
+      rowNum += cell.num; rowDen += cell.den;
+    }
+    values['Grand Total'] = pctOf(rowNum, rowDen);
+    return { key: rk, values };
+  });
+  const gNum = {}, gDen = {}; let totalNum = 0, totalDen = 0;
+  for (const m of months) { gNum[m] = 0; gDen[m] = 0; }
+  for (const rk of rowKeys) {
+    for (const m of months) {
+      const cell = matrix[rk][m] || { num: 0, den: 0 };
+      gNum[m] += cell.num; gDen[m] += cell.den;
+      totalNum += cell.num; totalDen += cell.den;
+    }
+  }
+  const gtValues = {};
+  for (const m of months) gtValues[m] = pctOf(gNum[m], gDen[m]);
+  gtValues['Grand Total'] = pctOf(totalNum, totalDen);
+  return { cols: [...months, 'Grand Total'], rows, grandTotal: { key: 'Grand Total', values: gtValues } };
+}
+
+// Renders a rowKey x month % pivot, coloured with the same fixed green/
+// yellow/red bucket convention as the main TAT tables (bucketStyle)
+function renderPctCrossTable(pivot, rowLabel, selectedCat) {
+  return `<div class="table-wrap"><table class="pivot">
+    <thead><tr><th>${esc(rowLabel)}</th>${pivot.cols.map(c => `<th>${c==='Grand Total' ? c : esc(monthShortLabelOf(c))}</th>`).join('')}</tr></thead>
+    <tbody>${pivot.rows.map(r => `<tr><th>${esc(r.key)}</th>${pivot.cols.map(c => `<td style="${bucketStyle(r.values[c], selectedCat)}">${r.values[c]}%</td>`).join('')}</tr>`).join('')}
+      <tr class="grand-total"><th>Grand Total</th>${pivot.cols.map(c => `<td style="${bucketStyle(pivot.grandTotal.values[c], selectedCat)}">${pivot.grandTotal.values[c]}%</td>`).join('')}</tr></tbody></table></div>`;
+}
+
+// Toggle pills to pick which TAT bucket the Channel/Customer % tables show
+function renderMomCatToggle(catKey, cats, selectedCat) {
+  return `<div class="fb-field" style="margin-bottom:16px;">
+    <label>TAT Bucket</label>
+    <div class="fb-presets">${cats.map(c => `<button data-momcat="${esc(c)}" data-momcatkey="${catKey}" class="${selectedCat===c?'active':''}">${esc(c)}</button>`).join('')}</div>
+  </div>`;
+}
+
+function attachMomCatListeners() {
+  document.querySelectorAll('[data-momcat]').forEach(el => {
+    el.onclick = () => { state.momCat[el.dataset.momcatkey] = el.dataset.momcat; renderTabContent(); };
+  });
+}
+
 // Local "From Warehouse" filter scoped only to the Channel & Customer MoM
 // tables - independent of the global filter bar's Warehouse filter
 function renderMomWhFilter() {
@@ -1094,9 +1170,46 @@ document.addEventListener('click', (e) => {
 // MONTH ON MONTH tab: Dispatch TAT / Delivery TAT trend across months, plus
 // Stock Qty MTD with a period-over-period % change indicator
 function renderMoM(fdf) {
-  const subs = [['dispatch','Dispatch TAT'],['delivery','Delivery TAT'],['stock','Stock Qty (MTD)'],['chcust','Channel & Customer']];
-  const sub = state.momSubTab || 'dispatch';
+  const subs = [
+    ['dispatchCC','Dispatch TAT (Channel & Customer wise)'],
+    ['deliveryCC','Delivery TAT (Channel & Customer wise)'],
+    ['dispatch','Dispatch TAT'],['delivery','Delivery TAT'],['stock','Stock Qty (MTD)'],['chcust','Channel & Customer'],
+  ];
+  const sub = state.momSubTab || 'dispatchCC';
   let html = `<nav class="sub-tabs">${subs.map(([k,l]) => `<button data-momsubtab="${k}" class="${sub===k?'active':''}">${esc(l)}</button>`).join('')}</nav>`;
+
+  if (sub === 'dispatchCC' || sub === 'deliveryCC') {
+    const isDispatch = sub === 'dispatchCC';
+    const tatKey = isDispatch ? 'Dis TAT' : 'Delivery TAT';
+    const label  = isDispatch ? 'Dispatch TAT' : 'Delivery TAT';
+    const cats   = isDispatch ? DISPATCH_CATS : DELIVERY_CATS;
+    const selectedCat = state.momCat[sub] || cats[0];
+
+    html += renderMomWhFilter();
+    html += renderMomCatToggle(sub, cats, selectedCat);
+
+    const localFdf = fdf.filter(r => state.momWh.has(String(r['From Warehouse'])));
+    if (localFdf.length === 0) {
+      html += '<div class="warning">No data matches the selected warehouse filter.</div>';
+      $('#tab-content').innerHTML = html;
+      attachMoMListeners(); attachMomWhListeners(); attachMomCatListeners();
+      return;
+    }
+
+    const chPivot = buildPctCrossTab(localFdf, 'Sales_Channel', tatKey, selectedCat);
+    const custPivot = buildPctCrossTab(localFdf, 'Customer', tatKey, selectedCat);
+    html += `<div class="section">
+      <div class="section-header"><h3>Sales Channel — ${esc(label)} "${esc(selectedCat)}" % by Month</h3><button class="expand-btn">⛶ Expand for screenshot</button></div>
+      ${renderPctCrossTable(chPivot, 'Sales Channel', selectedCat)}
+    </div>`;
+    html += `<div class="section">
+      <div class="section-header"><h3>Customer — ${esc(label)} "${esc(selectedCat)}" % by Month</h3><button class="expand-btn">⛶ Expand for screenshot</button></div>
+      ${renderPctCrossTable(custPivot, 'Customer', selectedCat)}
+    </div>`;
+    $('#tab-content').innerHTML = html;
+    attachMoMListeners(); attachMomWhListeners(); attachMomCatListeners();
+    return;
+  }
 
   if (sub === 'chcust') {
     if (!hasStockQty()) {
