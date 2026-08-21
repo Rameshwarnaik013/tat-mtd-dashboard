@@ -354,6 +354,7 @@ const DELIVERY_CATS = ['0-9 Days','10-12 Days','> 12 Days','Delivery Pending'];
 const DISPATCH_COLORS = {'0-2 Days':'#27ae60','3-5 Days':'#f39c12','>5 Days':'#e74c3c'};
 const DELIVERY_COLORS = {'0-9 Days':'#27ae60','10-12 Days':'#f39c12','> 12 Days':'#e74c3c','Delivery Pending':'#7f8c8d'};
 const REQUIRED = ['Invoice Date','New MIS Item Group','Sales_Channel','From Warehouse','Customer'];
+const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 const state = {
   rows: [],
@@ -465,7 +466,9 @@ async function handleFile(file) {
     state.rows = data;
     showParseStatus('Computing metrics...');
     await new Promise(r => setTimeout(r, 50));
-    preprocess();
+    await preprocess();
+    showParseStatus('Building filters...');
+    await new Promise(r => setTimeout(r, 0));
     computeOptions();
     initFilters();
     showDashboard();
@@ -478,59 +481,72 @@ async function handleFile(file) {
   }
 }
 
-function preprocess() {
+// Runs in chunks (yielding to the event loop between batches) so large
+// uploads (100k+ rows) don't freeze the tab, and reports progress via the
+// parse-status spinner. Must be awaited by the caller.
+async function preprocess() {
   state.monthLabels = {};
-  for (const r of state.rows) {
-    r._date = parseExcelDate(r['Invoice Date']);
-    if (r._date) {
-      r._dateStr = formatDate(r._date);
-      r._monthKey = `${r._date.getFullYear()}-${String(r._date.getMonth() + 1).padStart(2, '0')}`;
-      r._monthLabel = r._date.toLocaleString('en-US', { month: 'short', year: 'numeric' });
-      state.monthLabels[r._monthKey] = r._monthLabel;
-    }
-
-    // Effective pickup date: fall back to Invoice Date when Pickedup_Date is empty
-    const pickup = parseExcelDate(r['Pickedup_Date']) || r._date;
-    r._pickup = pickup;
-
-    // Dis Days = Pickedup_Date - Sales Confirmation Date (matches NDD formula in source)
-    // Falls back to Sales Order Date if Sales Confirmation Date is missing
-    const salesConf = parseExcelDate(r['Sales Confirmation Date']) || parseExcelDate(r['Sales Order Date']);
-    if (pickup && salesConf) {
-      const days = Math.max(0, Math.round((pickup - salesConf) / 86400000));
-      r['Dis Days'] = days;
-      r['Dis TAT'] = days <= 2 ? '0-2 Days' : days <= 5 ? '3-5 Days' : '>5 Days';
-    } else if (!r['Dis TAT'] || !String(r['Dis TAT']).trim()) {
-      const d = Number(r['Dis Days']);
-      if (Number.isFinite(d)) r['Dis TAT'] = d <= 2 ? '0-2 Days' : d <= 5 ? '3-5 Days' : '>5 Days';
-    }
-
-    // Delivery TAT = Delivered Date - Sales Confirmation Date
-    //                (falls back to Sales Order Date if Sales Confirmation Date is blank)
-    // If Delivered Date is missing -> "Delivery Pending"
-    const delivered = parseExcelDate(r['Delivered Date']);
-    const delStart = parseExcelDate(r['Sales Confirmation Date']) || parseExcelDate(r['Sales Order Date']);
-    if (delivered && delStart) {
-      const days = Math.max(0, Math.round((delivered - delStart) / 86400000));
-      r['Delivery Days'] = days;
-      r['Delivery TAT'] = days <= 9 ? '0-9 Days' : days <= 12 ? '10-12 Days' : '> 12 Days';
-    } else if (!delivered) {
-      r['Delivery TAT'] = 'Delivery Pending';
-    } else if (!r['Delivery TAT'] || !String(r['Delivery TAT']).trim()) {
-      const d = Number(r['Delivery Days']);
-      if (Number.isFinite(d)) r['Delivery TAT'] = d <= 9 ? '0-9 Days' : d <= 12 ? '10-12 Days' : '> 12 Days';
-      else r['Delivery TAT'] = 'Delivery Pending';
-    }
-  }
-  // Manual min/max loop instead of Math.min(...dates): spreading 100k+ elements
-  // as function arguments overflows the call stack on large uploads.
+  const rows = state.rows, n = rows.length;
+  const CHUNK = 20000;
   let minT = null, maxT = null;
-  for (const r of state.rows) {
-    if (!r._date) continue;
-    const t = r._date.getTime();
-    if (minT === null || t < minT) minT = t;
-    if (maxT === null || t > maxT) maxT = t;
+
+  for (let start = 0; start < n; start += CHUNK) {
+    const end = Math.min(start + CHUNK, n);
+    for (let i = start; i < end; i++) {
+      const r = rows[i];
+      r._date = parseExcelDate(r['Invoice Date']);
+      if (r._date) {
+        const t = r._date.getTime();
+        if (minT === null || t < minT) minT = t;
+        if (maxT === null || t > maxT) maxT = t;
+        r._dateStr = formatDate(r._date);
+        r._monthKey = `${r._date.getFullYear()}-${String(r._date.getMonth() + 1).padStart(2, '0')}`;
+        // Memoised per unique month instead of calling Intl.toLocaleString per row
+        let label = state.monthLabels[r._monthKey];
+        if (!label) { label = `${MONTH_ABBR[r._date.getMonth()]} ${r._date.getFullYear()}`; state.monthLabels[r._monthKey] = label; }
+        r._monthLabel = label;
+      }
+
+      // Effective pickup date: fall back to Invoice Date when Pickedup_Date is empty
+      const pickup = parseExcelDate(r['Pickedup_Date']) || r._date;
+      r._pickup = pickup;
+
+      // Shared start date for both TAT calcs: Sales Confirmation Date,
+      // falling back to Sales Order Date. Parsed once (was parsed twice
+      // per row before - once for Dis Days, once for Delivery TAT).
+      const salesConf = parseExcelDate(r['Sales Confirmation Date']) || parseExcelDate(r['Sales Order Date']);
+
+      // Dis Days = Pickedup_Date - salesConf (matches NDD formula in source)
+      if (pickup && salesConf) {
+        const days = Math.max(0, Math.round((pickup - salesConf) / 86400000));
+        r['Dis Days'] = days;
+        r['Dis TAT'] = days <= 2 ? '0-2 Days' : days <= 5 ? '3-5 Days' : '>5 Days';
+      } else if (!r['Dis TAT'] || !String(r['Dis TAT']).trim()) {
+        const d = Number(r['Dis Days']);
+        if (Number.isFinite(d)) r['Dis TAT'] = d <= 2 ? '0-2 Days' : d <= 5 ? '3-5 Days' : '>5 Days';
+      }
+
+      // Delivery TAT = Delivered Date - salesConf. If Delivered Date is
+      // missing -> "Delivery Pending"
+      const delivered = parseExcelDate(r['Delivered Date']);
+      if (delivered && salesConf) {
+        const days = Math.max(0, Math.round((delivered - salesConf) / 86400000));
+        r['Delivery Days'] = days;
+        r['Delivery TAT'] = days <= 9 ? '0-9 Days' : days <= 12 ? '10-12 Days' : '> 12 Days';
+      } else if (!delivered) {
+        r['Delivery TAT'] = 'Delivery Pending';
+      } else if (!r['Delivery TAT'] || !String(r['Delivery TAT']).trim()) {
+        const d = Number(r['Delivery Days']);
+        if (Number.isFinite(d)) r['Delivery TAT'] = d <= 9 ? '0-9 Days' : d <= 12 ? '10-12 Days' : '> 12 Days';
+        else r['Delivery TAT'] = 'Delivery Pending';
+      }
+    }
+    if (end < n) {
+      showParseStatus(`Computing metrics... ${Math.round(end / n * 100)}%`);
+      await new Promise(res => setTimeout(res, 0));
+    }
   }
+
   if (minT !== null) {
     state.filters.minDate = new Date(minT);
     state.filters.maxDate = new Date(maxT);
@@ -959,8 +975,7 @@ function momDeltaBadge(delta) {
 function monthShortLabelOf(key) {
   if (key === 'Grand Total') return key;
   const [y, m] = key.split('-');
-  const d = new Date(Number(y), Number(m) - 1, 1);
-  return d.toLocaleString('en-US', { month: 'short' }) + '-' + y.slice(2);
+  return MONTH_ABBR[Number(m) - 1] + '-' + y.slice(2);
 }
 
 // Cross-tab of rowKey x month (chronological, not magnitude-sorted like
